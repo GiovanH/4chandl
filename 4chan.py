@@ -55,6 +55,7 @@ def loadBoards():
     except FileNotFoundError:
         ju.json_save(example, filename)
         print("Missing the boards file. A sample has been generated.")
+        print("Please edit the template file in the jobj folder!")
         return example
 
 
@@ -72,7 +73,6 @@ def selectImages(board, preSelectedThreads):
     selectionIndices = []
 
     selectedSet = set([thread.get("no") for thread in preSelectedThreads])
-    print(selectedSet)
 
     threads = list(getThreads(board))
 
@@ -80,7 +80,6 @@ def selectImages(board, preSelectedThreads):
         if threads[i].get("no") in selectedSet:
             selectionIndices.append(i)
 
-    print(selectionIndices)
     # friendlyNames = ["{}: {}".format(
     #     thread.get("semantic_url"),
     friendlyNames = ["{}".format(
@@ -134,7 +133,7 @@ def main():
         downloadQueue = {}
 
     for board in boards:
-        downloadQueue[board] = selectImages(board, downloadQueue[board])
+        downloadQueue[board] = selectImages(board, (downloadQueue.get(board) or []))
 
     for board in list(downloadQueue.keys()):
         ju.json_save(downloadQueue, "downloadQueue")
