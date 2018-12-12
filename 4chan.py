@@ -12,22 +12,26 @@ import tkinter as tk
 class SelectorWindow():
 
     # Init and window management
-    def __init__(self, Tk, items, selection):
+    def __init__(self, Tk, title, items, selection):
         self.main = Tk
         self.selection = selection
+
+        self.lab_context_label = tk.Label(self.main, text=title, font=("Helvetica", 24))
+        self.lab_context_label.grid(row=0, column=0, sticky=tk.W + tk.E)
 
         self.listbox_context = tk.Listbox(
             self.main, relief=tk.GROOVE, selectmode=tk.MULTIPLE)
         self.listbox_context.grid(
-            row=0, column=0, sticky=tk.N + tk.S + tk.E + tk.W)
+            row=1, column=0, sticky=tk.N + tk.S + tk.E + tk.W, padx=4)
 
         self.btn_done = tk.Button(
             self.main, text="Open", takefocus=False, command=self.cmd_done)
-        self.btn_done.grid(row=1, column=0, sticky=tk.W)
+        self.btn_done.grid(row=2, column=0, sticky=tk.W + tk.E, padx=4, pady=4)
 
         top = self.main.winfo_toplevel()
         top.columnconfigure(0, weight=1)
-        top.rowconfigure(0, weight=1)
+        top.rowconfigure(1, weight=1)
+        top.geometry("300x800")
 
         for val in items:
             self.listbox_context.insert(
@@ -54,7 +58,7 @@ def getThreads(board):
     def grab(b, t):
         return requests.get("https://a.4cdn.org/{}/{}.json".format(b, t)).json()
     catalog = grab(board, "catalog")
-    ju.json_save(catalog, "catalog_{}".format(board))
+    # ju.json_save(catalog, "catalog_{}".format(board))
     for page in catalog:
         for thread in page.get("threads"):
             yield thread
@@ -71,7 +75,7 @@ def selectImages(board):
         for thread in threads]
 
     Tk = tk.Tk()
-    SelectorWindow(Tk, (friendlyNames), selectionIndices)
+    SelectorWindow(Tk, "/{}/ threads".format(board), (friendlyNames), selectionIndices)
     Tk.mainloop()
 
     selection = [threads[i] for i in selectionIndices]
@@ -84,7 +88,7 @@ def saveThreads(board, queue):
         threadno = thread.get("no")
         threadJson = requests.get(
             "https://a.4cdn.org/{}/thread/{}.json".format(board, threadno)).json()
-        ju.json_save(threadJson, "thread_{}".format(threadno))
+        # ju.json_save(threadJson, "thread_{}".format(threadno))
 
         sem = threadJson.get("posts")[0].get("semantic_url")
 
