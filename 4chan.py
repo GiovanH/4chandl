@@ -12,16 +12,16 @@ import tkinter as tk
 class SelectorWindow():
 
     # Init and window management
-    def __init__(self, Tk, title, items, selection):
+    def __init__(self, Tk, title, items, selections):
         self.main = Tk
-        self.selection = selection
+        self.selections = selections
 
-        self.lab_context_label = tk.Label(self.main, text=title, font=("Helvetica", 24))
-        self.lab_context_label.grid(row=0, column=0, sticky=tk.W + tk.E)
+        self.lab_title = tk.Label(self.main, text=title, font=("Helvetica", 24))
+        self.lab_title.grid(row=0, column=0, sticky=tk.W + tk.E)
 
-        self.listbox_context = tk.Listbox(
+        self.listbox_threads = tk.Listbox(
             self.main, relief=tk.GROOVE, selectmode=tk.MULTIPLE)
-        self.listbox_context.grid(
+        self.listbox_threads.grid(
             row=1, column=0, sticky=tk.N + tk.S + tk.E + tk.W, padx=4)
 
         self.btn_done = tk.Button(
@@ -29,16 +29,20 @@ class SelectorWindow():
         self.btn_done.grid(row=2, column=0, sticky=tk.W + tk.E, padx=4, pady=4)
 
         top = self.main.winfo_toplevel()
+        top.bind("<Escape>", self.cmd_done)
         top.columnconfigure(0, weight=1)
         top.rowconfigure(1, weight=1)
         top.geometry("300x800")
 
         for val in items:
-            self.listbox_context.insert(
+            self.listbox_threads.insert(
                 tk.END, val)
 
-    def cmd_done(self):
-        self.selection += self.listbox_context.curselection()
+        for index in selections:
+            self.listbox_threads.selection_set(index)
+
+    def cmd_done(self, event=None):
+        self.selections = self.listbox_threads.curselection()
         self.main.destroy()
 
 
@@ -64,10 +68,19 @@ def getThreads(board):
             yield thread
 
 
-def selectImages(board):
+def selectImages(board, preSelectedThreads):
     selectionIndices = []
 
+    selectedSet = set([thread.get("no") for thread in preSelectedThreads])
+    print(selectedSet)
+
     threads = list(getThreads(board))
+
+    for i in range(0, len(threads)):
+        if threads[i].get("no") in selectedSet:
+            selectionIndices.append(i)
+
+    print(selectionIndices)
     # friendlyNames = ["{}: {}".format(
     #     thread.get("semantic_url"),
     friendlyNames = ["{}".format(
@@ -75,7 +88,7 @@ def selectImages(board):
         for thread in threads]
 
     Tk = tk.Tk()
-    SelectorWindow(Tk, "/{}/ threads".format(board), (friendlyNames), selectionIndices)
+    SelectorWindow(Tk, "/{}/ threads".format(board), friendlyNames, selectionIndices)
     Tk.mainloop()
 
     selection = [threads[i] for i in selectionIndices]
@@ -111,14 +124,24 @@ def download4chanImage(board, sem, post):
     urlretrieve(src, dstfile)
 
 
+# TODO: Save the queue to a file, so we can resume an interupted session. 
+
 def main():
     boards = loadBoards()
-    downloadQueue = {}
+    try:
+        downloadQueue = ju.json_load("downloadQueue")
+    except FileNotFoundError:
+        downloadQueue = {}
+
     for board in boards:
-        downloadQueue[board] = []
-        downloadQueue[board] += selectImages(board)
-    for board in downloadQueue.keys():
-        saveThreads(board, downloadQueue[board])
+        downloadQueue[board] = selectImages(board, downloadQueue[board])
+
+    for board in list(downloadQueue.keys()):
+        ju.json_save(downloadQueue, "downloadQueue")
+        # queueList = downloadQueue.pop(board)
+        queueList = downloadQueue.get(board)
+        saveThreads(board, queueList)
+        # TODO: Detect 404s
 
 
 if __name__ == "__main__":
