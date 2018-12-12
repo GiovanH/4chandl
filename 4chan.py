@@ -109,11 +109,21 @@ def saveThreads(board, queue):
                 download4chanImage(board, sem, post)
 
 
+skips = 0
+
+
 def download4chanImage(board, sem, post):
     dstdir = "./saved/{}/{}/".format(board, sem)
     dstfile = "{}{}{}".format(dstdir, post.get("tim"), post.get("ext"))
+    
+    global skips
     if (path.exists(dstfile)):
+        skips += 1
         return
+    else:
+        if (skips > 0):
+            print("Skipped {} existing files. ".format(skips))
+            skips = 0
 
     src = "https://i.4cdn.org/{}/{}{}".format(
         board, post.get("tim"), post.get("ext"))
