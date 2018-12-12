@@ -7,6 +7,7 @@ from urllib.request import urlretrieve
 from urllib.error import HTTPError
 from os import makedirs, path
 from traceback import print_exc
+from json.decoder import JSONDecodeError
 import tkinter as tk
 
 
@@ -27,11 +28,11 @@ class SelectorWindow():
             row=1, column=0, sticky=tk.N + tk.S + tk.E + tk.W, padx=4, columnspan=2)
 
         self.btn_cancel = tk.Button(
-            self.main, text="Cancel", command=self.cmd_cancel)
+            self.main, text="Skip to DL", command=self.cmd_cancel)
         self.btn_cancel.grid(row=2, column=0, sticky=tk.W + tk.E, padx=4, pady=4)
 
         self.btn_done = tk.Button(
-            self.main, text="Next", command=self.cmd_done)
+            self.main, text="Save and Continue", command=self.cmd_done)
         self.btn_done.grid(row=2, column=1, sticky=tk.W + tk.E, padx=4, pady=4)
 
         top = self.main.winfo_toplevel()
@@ -143,14 +144,18 @@ def saveThreads(board, queue):
     for thread in queue:
 
         threadno = thread.get("no")
-        threadJson = requests.get(
-            "https://a.4cdn.org/{}/thread/{}.json".format(board, threadno)).json()
+        threadurl = "https://a.4cdn.org/{}/thread/{}.json".format(board, threadno)
+        try:
+            threadJson = requests.get(threadurl).json()
+            sem = threadJson.get("posts")[0].get("semantic_url")
 
-        sem = threadJson.get("posts")[0].get("semantic_url")
-
-        for post in threadJson.get("posts"):
-            if post.get("ext"):
-                download4chanImage(board, sem, post)
+            for post in threadJson.get("posts"):
+                if post.get("ext"):
+                    download4chanImage(board, sem, post)
+        except JSONDecodeError as e:
+            print("Error with thread [{}] {}".format(threadno, threadurl))
+            print_exc(limit=1)
+            ju.json_save(thread, "error_thread_{}".format(threadno))
 
 
 skips = 0
@@ -158,11 +163,11 @@ skips = 0
 
 def download4chanImage(board, sem, post):
     dstdir = "./saved/{}/{}/".format(board, sem)
-    dstfile = "{}{}{}".format(dstdir, post.get("tim"), post.get("ext"))
+    dstfile = "{}{}".format(post.get("tim"), post.get("ext"))
 
     # Fun with skips
     global skips
-    if (path.exists(dstfile)):
+    if (path.exists("{}{}".format(dstdir, dstfile))):
         skips += 1
         return
     else:
@@ -172,17 +177,19 @@ def download4chanImage(board, sem, post):
 
     src = "https://i.4cdn.org/{}/{}{}".format(
         board, post.get("tim"), post.get("ext"))
-    downloadFile(src, dstdir, dstfile)
+    downloadFile(src, dstdir, dstfile, debug=post)
 
 
-def downloadFile(src, dstdir, dstfile):
-    print("{} --> {}".format(src, dstfile))
+def downloadFile(src, dstdir, dstfile, debug=None):
+    dstpath = "{}{}".format(dstdir, dstfile)
     makedirs(dstdir, exist_ok=True)
     try:
-        urlretrieve(src, dstfile)
+        urlretrieve(src, dstpath)
+        print("{} --> {}".format(src, dstpath))
     except HTTPError:
-        print_exc()
-        print("Source URL: {}".format(src))
+        print("{} -x> {}".format(src, dstpath))
+        print_exc(limit=1)
+        ju.json_save(debug, "error_download_{}".format(dstfile))
 
 
 # TODO: Save the queue to a file, so we can resume an interupted session. 
@@ -196,13 +203,15 @@ def main():
         downloadQueue = {}
 
     # Get selections
-    for board in boards:
-        try:
-            selection = selectImages(board, (downloadQueue.get(board) or []))
-        except KeyboardInterrupt:
-            print("Program canceled, discarding unsaved changes. ")
-            return
-        downloadQueue[board] = selection
+    try:
+        for board in boards:
+            oldSelection = (downloadQueue.get(board) or [])
+            downloadQueue[board] = oldSelection  # Fallback
+            selection = selectImages(board, oldSelection)
+            downloadQueue[board] = selection
+    except KeyboardInterrupt:
+        print("Program canceled, discarding unsaved changes, but downloading old threads. ")
+
         ju.json_save(downloadQueue, "downloadQueue")
 
     # Run downloads
