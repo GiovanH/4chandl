@@ -55,7 +55,7 @@ def loadBoards():
     except FileNotFoundError:
         ju.json_save(example, filename)
         print("Missing the boards file. A sample has been generated.")
-        raise
+        return example
 
 
 def getThreads(board):
