@@ -48,7 +48,7 @@ class SelectorWindow():
 
 def loadBoards():
     filename = "4chanBoards"
-    example = []
+    example = ["wsg", "biz", "gd"]
     try:
         boards = ju.json_load(filename)
         return boards
