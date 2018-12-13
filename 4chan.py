@@ -19,7 +19,8 @@ class SelectorWindow():
         self.selections = selections
         self.cancel = False
 
-        self.lab_title = tk.Label(self.main, text=title, font=("Helvetica", 24))
+        self.lab_title = tk.Label(
+            self.main, text=title, font=("Helvetica", 24))
         self.lab_title.grid(row=0, column=0, sticky=tk.W + tk.E, columnspan=2)
 
         self.listbox_threads = tk.Listbox(
@@ -29,7 +30,8 @@ class SelectorWindow():
 
         self.btn_cancel = tk.Button(
             self.main, text="Skip to DL", command=self.cmd_cancel)
-        self.btn_cancel.grid(row=2, column=0, sticky=tk.W + tk.E, padx=4, pady=4)
+        self.btn_cancel.grid(
+            row=2, column=0, sticky=tk.W + tk.E, padx=4, pady=4)
 
         self.btn_done = tk.Button(
             self.main, text="Save and Continue", command=self.cmd_done)
@@ -84,12 +86,12 @@ def trimObj(obj, interest):
 
 def trimThread(thread):
     interest = [
-        "no", 
-        "name", 
-        "sub", 
-        "com", 
-        "tim", 
-        "archived", 
+        "no",
+        "name",
+        "sub",
+        "com",
+        "tim",
+        "archived",
         "semantic_url",
         "tag"
     ]
@@ -97,7 +99,8 @@ def trimThread(thread):
 
 
 def getThreads(board):
-    catalog = requests.get("https://a.4cdn.org/{}/{}.json".format(board, "catalog")).json()
+    catalog = requests.get(
+        "https://a.4cdn.org/{}/{}.json".format(board, "catalog")).json()
     # ju.json_save(catalog, "catalog_{}".format(board))
     for page in catalog:
         for thread in page.get("threads"):
@@ -105,7 +108,8 @@ def getThreads(board):
 
 
 def friendlyThreadName(thread):
-    name = thread.get("sub") or thread.get("com") or thread.get("semantic_url") or thread.get("name")
+    name = thread.get("sub") or thread.get("com") or thread.get(
+        "semantic_url") or thread.get("name")
     return name[:64]
 
 
@@ -123,15 +127,18 @@ def selectImages(board, preSelectedThreads):
     liveThreadNos = set([thread.get("no") for thread in threads])
     for thread in preSelectedThreads:
         if thread.get("no") not in liveThreadNos:
-            print("Thread {} has 404'd, removing. ".format(friendlyThreadName(thread)))
+            print("Thread {} has 404'd, removing. ".format(
+                friendlyThreadName(thread)))
 
     friendlyNames = [friendlyThreadName(thread) for thread in threads]
 
     # Window
     Tk = tk.Tk()
-    SW = SelectorWindow(Tk, "/{}/ threads".format(board), friendlyNames, selectionIndices)
+    SW = SelectorWindow(
+        Tk, "/{}/ threads".format(board), friendlyNames, selectionIndices)
     Tk.mainloop()
 
+    # Break out of a higher loop
     if SW.cancel:
         raise KeyboardInterrupt("Canceled")
 
@@ -142,20 +149,55 @@ def selectImages(board, preSelectedThreads):
 
 def saveThreads(board, queue):
     for thread in queue:
-
         threadno = thread.get("no")
-        threadurl = "https://a.4cdn.org/{}/thread/{}.json".format(board, threadno)
+        threadurl = "https://a.4cdn.org/{}/thread/{}.json".format(
+            board, threadno)
         try:
+            # Get thread data
             threadJson = requests.get(threadurl).json()
             sem = threadJson.get("posts")[0].get("semantic_url")
 
-            for post in threadJson.get("posts"):
-                if post.get("ext"):
-                    download4chanImage(board, sem, post)
+            # Run thread operations
+            saveMessageLog(threadno, sem, threadJson, board)
+            saveImageLog(threadJson, board, sem)
+
         except JSONDecodeError as e:
             print("Error with thread [{}] {}".format(threadno, threadurl))
             print_exc(limit=1)
             ju.json_save(thread, "error_thread_{}".format(threadno))
+
+
+def saveImageLog(threadJson, board, sem):
+    for post in threadJson.get("posts"):
+        if post.get("ext"):
+            download4chanImage(board, sem, post)
+
+
+def saveMessageLog(threadno, sem, threadJson, board):
+    msgBase = "./saved/text/{}/".format(board)
+
+    makedirs(msgBase, exist_ok=True)
+    filePath = "{}{}_{}.htm".format(msgBase, threadno, sem)
+    with open(filePath, "w", encoding="utf-8") as textfile:
+        print("-----> {}".format(filePath))
+        for post in threadJson.get("posts"):
+            textfile.write(formatPost(post))
+
+
+def formatPost(post):
+    subfields = ["sub", "name", "now", "no"]
+    subline = " ".join([str(post.get(field))
+                        for field in subfields if post.get(field) is not None])
+    return "\
+    <div class='post'><span class='subline' id='p{no}'>>{subline} >>{no}</span>\n \
+    <span class='file'>File: {file}</span>\n \
+    {com}</div>".format(
+        subline=subline,
+        no=post.get("no"),
+        file=(post.get("filename") + post.get("ext")
+              if post.get("filename") else "None"),
+        com=(("\n<p>" + post.get("com") + "</p>") if post.get("com") else "")
+    )
 
 
 skips = 0
@@ -192,7 +234,7 @@ def downloadFile(src, dstdir, dstfile, debug=None):
         ju.json_save(debug, "error_download_{}".format(dstfile))
 
 
-# TODO: Save the queue to a file, so we can resume an interupted session. 
+# TODO: Save the queue to a file, so we can resume an interupted session.
 
 def main():
     # Load
