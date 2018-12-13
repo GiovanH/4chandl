@@ -9,6 +9,7 @@ from os import makedirs, path
 from traceback import print_exc
 from json.decoder import JSONDecodeError
 import tkinter as tk
+import html.parser
 
 
 class SelectorWindow():
@@ -61,6 +62,24 @@ class SelectorWindow():
         self.main.destroy()
 
 
+class HTMLTextExtractor(html.parser.HTMLParser):
+    def __init__(self):
+        super(HTMLTextExtractor, self).__init__()
+        self.result = []
+
+    def handle_data(self, d):
+        self.result.append(d)
+
+    def get_text(self):
+        return ''.join(self.result)
+
+
+def html_to_text(html):
+    s = HTMLTextExtractor()
+    s.feed(html)
+    return s.get_text()
+
+
 def loadBoards():
     filename = "4chanBoards"
     example = ["wsg", "biz", "gd"]
@@ -107,8 +126,21 @@ def getThreads(board):
 
 
 def friendlyThreadName(thread):
-    name = thread.get("sub") or thread.get("com") or thread.get("semantic_url") or thread.get("name")
-    return name[:64]
+    sub = thread.get("sub")
+    com = thread.get("com")
+    sem = thread.get("semantic_url")
+    auth = thread.get("name")
+    
+    tname = ""
+    if sub:
+        tname += "[{}] ".format(sub)
+    if com:
+        tname += "{} ".format(html_to_text(com))
+    if sem:
+        tname += "/{} ".format(sem)
+    tname += " ~{}".format(auth)
+
+    return tname
 
 
 def selectImages(board, preSelectedThreads):
@@ -163,16 +195,30 @@ def saveThreads(board, queue):
 
 
 def saveImageLog(threadJson, board, sem):
+    skips = 0   
     for post in threadJson.get("posts"):
         if post.get("ext"):
-            download4chanImage(board, sem, post)
+            try:
+                download4chanImage(board, sem, post)
+            except FileExistsError:
+                skips += 1
+    if (skips > 0):
+        print("Skipped {:>3} existing images. ".format(skips))
 
 
 def saveMessageLog(threadno, sem, threadJson, board):
     msgBase = "./saved/text/{}/".format(board)
+    filePath = "{}{}_{}.htm".format(msgBase, threadno, sem)
+
+    try:
+        lastPostTime = threadJson.get("posts")[-1].get("time")
+        fileUpdateTime = path.getmtime(filePath)
+        if fileUpdateTime > lastPostTime:
+            return
+    except FileNotFoundError:
+        pass
 
     makedirs(msgBase, exist_ok=True)
-    filePath = "{}{}_{}.htm".format(msgBase, threadno, sem)
     with open(filePath, "w", encoding="utf-8") as textfile:
         print("-----> {}".format(filePath))
         for post in threadJson.get("posts"):
@@ -195,22 +241,12 @@ def formatPost(post):
     )
 
 
-skips = 0
-
-
 def download4chanImage(board, sem, post):
     dstdir = "./saved/{}/{}/".format(board, sem)
     dstfile = "{}{}".format(post.get("tim"), post.get("ext"))
 
-    # Fun with skips
-    global skips
     if (path.exists("{}{}".format(dstdir, dstfile))):
-        skips += 1
-        return
-    else:
-        if (skips > 0):
-            print("Skipped {} existing files. ".format(skips))
-            skips = 0
+        raise FileExistsError(dstfile)
 
     src = "https://i.4cdn.org/{}/{}{}".format(
         board, post.get("tim"), post.get("ext"))
