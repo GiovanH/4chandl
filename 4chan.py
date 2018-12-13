@@ -99,8 +99,7 @@ def trimThread(thread):
 
 
 def getThreads(board):
-    catalog = requests.get(
-        "https://a.4cdn.org/{}/{}.json".format(board, "catalog")).json()
+    catalog = requests.get("https://a.4cdn.org/{}/{}.json".format(board, "catalog")).json()
     # ju.json_save(catalog, "catalog_{}".format(board))
     for page in catalog:
         for thread in page.get("threads"):
@@ -108,8 +107,7 @@ def getThreads(board):
 
 
 def friendlyThreadName(thread):
-    name = thread.get("sub") or thread.get("com") or thread.get(
-        "semantic_url") or thread.get("name")
+    name = thread.get("sub") or thread.get("com") or thread.get("semantic_url") or thread.get("name")
     return name[:64]
 
 
@@ -127,15 +125,13 @@ def selectImages(board, preSelectedThreads):
     liveThreadNos = set([thread.get("no") for thread in threads])
     for thread in preSelectedThreads:
         if thread.get("no") not in liveThreadNos:
-            print("Thread {} has 404'd, removing. ".format(
-                friendlyThreadName(thread)))
+            print("Thread {} has 404'd, removing. ".format(friendlyThreadName(thread)))
 
     friendlyNames = [friendlyThreadName(thread) for thread in threads]
 
     # Window
     Tk = tk.Tk()
-    SW = SelectorWindow(
-        Tk, "/{}/ threads".format(board), friendlyNames, selectionIndices)
+    SW = SelectorWindow(Tk, "/{}/ threads".format(board), friendlyNames, selectionIndices)
     Tk.mainloop()
 
     # Break out of a higher loop
@@ -150,8 +146,7 @@ def selectImages(board, preSelectedThreads):
 def saveThreads(board, queue):
     for thread in queue:
         threadno = thread.get("no")
-        threadurl = "https://a.4cdn.org/{}/thread/{}.json".format(
-            board, threadno)
+        threadurl = "https://a.4cdn.org/{}/thread/{}.json".format(board, threadno)
         try:
             # Get thread data
             threadJson = requests.get(threadurl).json()
