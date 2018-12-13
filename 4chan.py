@@ -24,10 +24,14 @@ class SelectorWindow():
             self.main, text=title, font=("Helvetica", 24))
         self.lab_title.grid(row=0, column=0, sticky=tk.W + tk.E, columnspan=2)
 
+        self.scrollbar = tk.Scrollbar(self.main)
+        self.scrollbar.grid(
+            row=1, column=1, sticky=tk.N + tk.S + tk.E)
+
         self.listbox_threads = tk.Listbox(
-            self.main, relief=tk.GROOVE, selectmode=tk.MULTIPLE)
+            self.main, relief=tk.GROOVE, selectmode=tk.MULTIPLE, yscrollcommand=self.scrollbar.set)
         self.listbox_threads.grid(
-            row=1, column=0, sticky=tk.N + tk.S + tk.E + tk.W, padx=4, columnspan=2)
+            row=1, column=0, sticky=tk.N + tk.S + tk.E + tk.W, padx=(4, 18), columnspan=2)
 
         self.btn_cancel = tk.Button(
             self.main, text="Skip to DL", command=self.cmd_cancel)
@@ -52,13 +56,15 @@ class SelectorWindow():
         for index in selections:
             self.listbox_threads.selection_set(index)
 
+
+        self.scrollbar.config( command = self.listbox_threads.yview )
+
     def cmd_cancel(self, event=None):
         self.cancel = True
         self.main.destroy()
 
     def cmd_done(self, event=None):
         self.selections = self.listbox_threads.curselection()
-        print("TK Selections after: {}".format(self.selections))
         self.main.destroy()
 
 
@@ -146,6 +152,7 @@ def friendlyThreadName(thread):
 def selectImages(board, preSelectedThreads):
     selectedSet = set([thread.get("no") for thread in preSelectedThreads])
     threads = list(getThreads(board))
+    threads = sorted(threads, key=lambda t: -t.get("no"))
 
     # Write selectionIndices
     selectionIndices = []
