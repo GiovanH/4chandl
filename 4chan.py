@@ -34,12 +34,12 @@ class SelectorWindow():
             row=1, column=0, sticky=tk.N + tk.S + tk.E + tk.W, padx=(4, 18), columnspan=2)
 
         self.btn_cancel = tk.Button(
-            self.main, text="Skip to DL", command=self.cmd_cancel)
+            self.main, text="Update Now", command=self.cmd_cancel)
         self.btn_cancel.grid(
             row=2, column=0, sticky=tk.W + tk.E, padx=4, pady=4)
 
         self.btn_done = tk.Button(
-            self.main, text="Save and Continue", command=self.cmd_done)
+            self.main, text="Next", command=self.cmd_done)
         self.btn_done.grid(row=2, column=1, sticky=tk.W + tk.E, padx=4, pady=4)
 
         top = self.main.winfo_toplevel()
@@ -164,9 +164,12 @@ def selectImages(board, preSelectedThreads):
     liveThreadNos = set([thread.get("no") for thread in threads])
     for thread in preSelectedThreads:
         if thread.get("no") not in liveThreadNos:
-            print("Thread {} has 404'd, removing. ".format(friendlyThreadName(thread)))
+            print("Thread {} has 404'd, will be removed. ".format(friendlyThreadName(thread)))
 
     friendlyNames = [friendlyThreadName(thread) for thread in threads]
+
+    # print("selectedSet: {}".format(selectedSet))
+    # print("selectionIndices: {}".format(selectionIndices))
 
     # Window
     Tk = tk.Tk()
@@ -179,6 +182,7 @@ def selectImages(board, preSelectedThreads):
 
     # Indices to thread objects
     selection = [threads[i] for i in SW.selections]
+    # print("selections: {}".format(SW.selections))
     return selection
 
 
@@ -289,10 +293,9 @@ def main():
             downloadQueue[board] = oldSelection  # Fallback
             selection = selectImages(board, oldSelection)
             downloadQueue[board] = selection
-    except KeyboardInterrupt:
-        print("Program canceled, discarding unsaved changes, but downloading old threads. ")
-
         ju.json_save(downloadQueue, "downloadQueue")
+    except KeyboardInterrupt:
+        print("Program canceled, jumping straight to downloading threads. ")
 
     # Run downloads
     for board in list(downloadQueue.keys()):
