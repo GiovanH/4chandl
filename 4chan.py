@@ -164,7 +164,7 @@ def selectImages(board, preSelectedThreads):
     liveThreadNos = set([thread.get("no") for thread in threads])
     for thread in preSelectedThreads:
         if thread.get("no") not in liveThreadNos:
-            print("Thread {} has 404'd, will be removed. ".format(friendlyThreadName(thread)))
+            print("404: {}".format(friendlyThreadName(thread)[:64]))
 
     friendlyNames = [friendlyThreadName(thread) for thread in threads]
 
