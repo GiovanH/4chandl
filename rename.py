@@ -5,7 +5,7 @@ from os.path import sep, getmtime
 from send2trash import send2trash
 from time import sleep
 from traceback import print_exc
-import _thread as thread
+import loom
 
 
 def renameDir(src, newName):
@@ -25,10 +25,12 @@ def renameDir(src, newName):
 
 
 def main():
-    srcdir = input("Read folders in what directory? (glob) ")
+    srcdir = "saved/*"# input("Read folders in what directory? (glob) ")
     inter = srcdir.replace("/", sep) + "{s}*{s}".format(s=sep)
+    print(inter)
     globbed = glob(inter)
     globbed = sorted(globbed, key=getmtime)
+    print(globbed)
     for path in globbed:
         print(path)
         ans = input("?> ")
@@ -36,7 +38,7 @@ def main():
             if ans == "":
                 continue
             try:
-                start_thread(ans, renameDir, (path, ans, ))
+                loom.thread(name=ans, target=renameDir, args=(path, ans, ))
                 # renameDir(path, ans)
                 sleep(0.1)
             except Exception as e:
@@ -45,19 +47,7 @@ def main():
         except ValueError:
             print("Invalid input. ")  # Have another go.
 
-
-threads = []
-
-
-def start_thread(name, f, args):
-    def closure(f, args, name):
-        threads.append(name)
-        f(*args)
-        threads.remove(name)
-
-    thread.start_new_thread(closure, (f, args, name, ))
-
-
+# threading.Thread(name=ans, target=renameDir, args=(path, ans, )).start()
 def run_threaded():
     try:
         main()
@@ -66,10 +56,7 @@ def run_threaded():
         print_exc()
 
     # Cleanup
-    while (len(threads) > 0):
-        print("Waiting for jobs to finish:")
-        print("\n".join(["- {}".format(t) for t in threads]))
-        sleep(0.8)
+    loom.threadWait(1, 0.8)
     print("Finished.")
 
 
