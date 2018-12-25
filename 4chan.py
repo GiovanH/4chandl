@@ -4,50 +4,50 @@ import jfileutil as ju
 
 import requests
 from urllib.request import urlretrieve
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from os import makedirs, path
 from traceback import print_exc
 from json.decoder import JSONDecodeError
 import tkinter as tk
+import progressbar
+
 import html.parser
 
 
-class SelectorWindow():
+class SelectorWindow(tk.Frame):
 
     # Init and window management
-    def __init__(self, Tk, title, items, selections):
-        self.main = Tk
+    def __init__(self, parent, title, items, selections, *args, **kwargs):
+        tk.Frame.__init__(self, parent, *args, **kwargs)
+        self.parent = parent
         self.selections = selections
         self.cancel = False
 
-        self.lab_title = tk.Label(
-            self.main, text=title, font=("Helvetica", 24))
+        self.parent.protocol("WM_DELETE_WINDOW", self.cmd_cancel)
+
+        self.lab_title = tk.Label(text=title, font=("Helvetica", 24))
         self.lab_title.grid(row=0, column=0, sticky=tk.W + tk.E, columnspan=2)
 
-        self.scrollbar = tk.Scrollbar(self.main)
+        self.scrollbar = tk.Scrollbar()
         self.scrollbar.grid(
             row=1, column=1, sticky=tk.N + tk.S + tk.E)
 
-        self.listbox_threads = tk.Listbox(
-            self.main, relief=tk.GROOVE, selectmode=tk.MULTIPLE, yscrollcommand=self.scrollbar.set)
+        self.listbox_threads = tk.Listbox(relief=tk.GROOVE, selectmode=tk.MULTIPLE, yscrollcommand=self.scrollbar.set)
         self.listbox_threads.grid(
             row=1, column=0, sticky=tk.N + tk.S + tk.E + tk.W, padx=(4, 18), columnspan=2)
 
-        self.btn_cancel = tk.Button(
-            self.main, text="Update Now", command=self.cmd_cancel)
+        self.btn_cancel = tk.Button(text="Update Now", command=self.cmd_cancel)
         self.btn_cancel.grid(
             row=2, column=0, sticky=tk.W + tk.E, padx=4, pady=4)
 
-        self.btn_done = tk.Button(
-            self.main, text="Next", command=self.cmd_done)
+        self.btn_done = tk.Button(text="Next", command=self.cmd_done)
         self.btn_done.grid(row=2, column=1, sticky=tk.W + tk.E, padx=4, pady=4)
 
-        top = self.main.winfo_toplevel()
-        top.bind("<Escape>", self.cmd_done)
-        top.columnconfigure(0, weight=1)
-        top.columnconfigure(1, weight=1)
-        top.rowconfigure(1, weight=1)
-        top.geometry("300x800")
+        self.parent.bind("<Escape>", self.cmd_done)
+        self.parent.columnconfigure(0, weight=1)
+        self.parent.columnconfigure(1, weight=1)
+        self.parent.rowconfigure(1, weight=1)
+        self.parent.geometry("600x800")
 
         for val in items:
             self.listbox_threads.insert(
@@ -56,16 +56,15 @@ class SelectorWindow():
         for index in selections:
             self.listbox_threads.selection_set(index)
 
-
-        self.scrollbar.config( command = self.listbox_threads.yview )
+        self.scrollbar.config(command=self.listbox_threads.yview)
 
     def cmd_cancel(self, event=None):
         self.cancel = True
-        self.main.destroy()
+        self.parent.destroy()
 
     def cmd_done(self, event=None):
         self.selections = self.listbox_threads.curselection()
-        self.main.destroy()
+        self.parent.destroy()
 
 
 class HTMLTextExtractor(html.parser.HTMLParser):
@@ -124,7 +123,14 @@ def trimThread(thread):
 
 
 def getThreads(board):
-    catalog = requests.get("https://a.4cdn.org/{}/{}.json".format(board, "catalog")).json()
+    try:
+        catalog = requests.get("https://a.4cdn.org/{}/{}.json".format(board, "catalog"))
+        if not catalog.ok:
+            catalog.raise_for_status()
+        catalog = catalog.json()
+    except JSONDecodeError as e:
+        print(catalog)
+        raise
     # ju.json_save(catalog, "catalog_{}".format(board))
     for page in catalog:
         for thread in page.get("threads"):
@@ -187,7 +193,12 @@ def selectImages(board, preSelectedThreads):
 
 
 def saveThreads(board, queue):
+    pbar = progressbar.ProgressBar(max_value=len(queue), redirect_stdout=True)
+    i = 0
     for thread in queue:
+        i += 1
+        pbar.update(i)
+
         threadno = thread.get("no")
         threadurl = "https://a.4cdn.org/{}/thread/{}.json".format(board, threadno)
         try:
@@ -203,6 +214,7 @@ def saveThreads(board, queue):
             print("Error with thread [{}] {}".format(threadno, threadurl))
             print_exc(limit=1)
             ju.json_save(thread, "error_thread_{}".format(threadno))
+    pbar.finish()
 
 
 def saveImageLog(threadJson, board, sem):
@@ -274,9 +286,13 @@ def downloadFile(src, dstdir, dstfile, debug=None):
         print("{} -x> {}".format(src, dstpath))
         print_exc(limit=1)
         ju.json_save(debug, "error_download_{}".format(dstfile))
+    except ConnectionResetError:
+        print("{} -x> {}".format(src, dstpath))
+        print_exc(limit=1)
+    except URLError:
+        print("{} -x> {}".format(src, dstpath))
+        print_exc(limit=1)
 
-
-# TODO: Save the queue to a file, so we can resume an interupted session.
 
 def main():
     # Load
@@ -295,7 +311,7 @@ def main():
             downloadQueue[board] = selection
         ju.json_save(downloadQueue, "downloadQueue")
     except KeyboardInterrupt:
-        print("Program canceled, jumping straight to downloading threads. ")
+        print("Selections canceled, jumping straight to downloading threads. ")
 
     # Run downloads
     for board in list(downloadQueue.keys()):
