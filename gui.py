@@ -13,9 +13,10 @@ class SelectorWindow(tk.Tk):
         headers = [
             ("no", "Number",),
             ("name", "Author",),
-            ("semantic_url", "URL",),
             ("sub", "Subject",),
             ("com", "Comment",),
+            ("time", "Time",),
+            ("semantic_url", "URL",),
         ]
         tablerows = [[str(thread.get(h[0])) for h in headers] for thread in sorted(threads, key=lambda t: -t.get("no"))]
 
@@ -56,7 +57,7 @@ class SelectorFrame(tk.Frame):
         lab_title = lab_title = tk.Label(text=title, font=("Helvetica", 24))
         lab_title.grid(row=0, column=0, sticky=tk.W + tk.E)
 
-        listbox_threads = MultiColumnListbox(self, headers, items)
+        listbox_threads = MultiColumnListbox(self, headers, items, multiselect=True)
         listbox_threads.grid(
             row=1, column=0, sticky=tk.N + tk.S + tk.E + tk.W, padx=(4, 18))
 
@@ -78,7 +79,6 @@ class SelectorFrame(tk.Frame):
         self.listbox_threads = listbox_threads
 
         # Load data
-        listbox_threads.build_tree(headers, items)
         listbox_threads.modSelection(selectionNos)
 
     def getSelections(self):
@@ -88,26 +88,22 @@ class SelectorFrame(tk.Frame):
 class MultiColumnListbox(tk.Frame):
     """use a ttk.TreeView as a multicolumn ListBox"""
 
-    def __init__(self, parent, headers, tabledata, multiselect=True, *args, **kwargs):
+    def __init__(self, parent, headers, tabledata, multiselect=False, sortable=True, *args, **kwargs):
         tk.Frame.__init__(self, *args, **kwargs)
         self.tree = None
-        self.virtual_event = True
+        self.sortable = sortable
         self.headers = headers  # This must remain static.
         self.setup_widgets(headers)
         self.build_tree(headers, tabledata)
 
         if multiselect:
             self.lastSelections = self.getSelections()
-            print(self.tree.keys())
             self.tree.configure(selectmode=tk.NONE)
-            self.tree.bind("<Button-1>", self.handle_mv_selection)
+            self.tree.bind("<Button-1>", self.handle_multiselect_click)
 
-    def handle_mv_selection(self, event):
-        print(self.virtual_event, event)
+    def handle_multiselect_click(self, event):
         item = self.tree.identify('item', event.x, event.y)
         self.tree.selection_toggle(item)
-
-        print("you clicked on", self.tree.item(item, "text"))
 
     def setup_widgets(self, headers):
         container = self
@@ -127,37 +123,41 @@ class MultiColumnListbox(tk.Frame):
 
     def sortby(self, tree, col, descending):
         """sort tree contents when a column header is clicked on"""
-        # grab values to sort
+
         data = [(tree.set(child, col), child) for child in tree.get_children('')]
         # if the data to be sorted is numeric change to float
         # data =  change_numeric(data)
+
         # now sort the data in place
         data.sort(reverse=descending)
         for ix, item in enumerate(data):
             tree.move(item[1], '', ix)
+
         # switch the heading so it will sort in the opposite direction
         tree.heading(col, command=lambda col=col: self.sortby(tree, col, int(not descending)))
 
     def build_tree(self, headers, itemlist):
-        self.virtual_event = True
-
         for col in headers:
-            # Use this for sortable columns.
-            # self.tree.heading(col, text=col.title(), command=lambda c=col: self.sortby(self.tree, c, 0))
-            self.tree.heading(col, text=col.title())
+            if self.sortable:
+                self.tree.heading(col, text=col.title(), command=lambda c=col: self.sortby(self.tree, c, 0))
+            else:
+                self.tree.heading(col, text=col.title())
             # adjust the column's width to the header string
             self.tree.column(col, width=tkFont.Font().measure(col.title()))
+
+        # Super dirty average
+        avgs = [0] * len(headers)
 
         for item in itemlist:
             self.tree.insert('', tk.END, values=item)
 
-        self.virtual_event = False
-
             # adjust column's width if necessary to fit each value
-            # for ix, val in enumerate(item):
-            #     col_w = tkFont.Font().measure(val)
-            #     if self.tree.column(headers[ix], width=None) < col_w:
-            #         self.tree.column(headers[ix], width=col_w)
+            for ix, val in enumerate(item):
+                col_w = tkFont.Font().measure(val)
+                avgs[ix] = (col_w + avgs[ix]) / 2  
+
+        for i in range(0, len(headers)):
+            self.tree.column(headers[i], width=min(int(avgs[i]), 480))
 
     def modSelection(self, selectionNos):
         select_these_items = [

@@ -62,6 +62,7 @@ def trimThread(thread):
         "sub",
         "com",
         "tim",
+        "time",
         "archived",
         "semantic_url",
         "tag"
@@ -78,7 +79,6 @@ def getThreads(board):
     except JSONDecodeError as e:
         print(catalog)
         raise
-    # ju.json_save(catalog, "catalog_{}".format(board))
     for page in catalog:
         for thread in page.get("threads"):
             yield trimThread(thread)
@@ -105,7 +105,6 @@ def friendlyThreadName(thread):
 def selectImages(board, preSelectedThreads):
     selectedSet = set([thread.get("no") for thread in preSelectedThreads])
     threads = list(getThreads(board))
-    threads = sorted(threads, key=lambda t: -t.get("no"))
 
     # Find 404'd threads
     liveThreadNos = set([thread.get("no") for thread in threads])
@@ -124,13 +123,11 @@ def selectImages(board, preSelectedThreads):
 
     # Break out of a higher loop
     if SW.cancel:
-        raise Exception
-        # raise KeyboardInterrupt("Canceled")
+        raise KeyboardInterrupt("Canceled")
 
     # Indices to thread objects
     selection = [thread for thread in threads if thread.get("no") in SW.selections]
     
-    raise Exception
     # print("selections: {}".format(SW.selections))
     return selection
 
