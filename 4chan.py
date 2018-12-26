@@ -107,33 +107,30 @@ def selectImages(board, preSelectedThreads):
     threads = list(getThreads(board))
     threads = sorted(threads, key=lambda t: -t.get("no"))
 
-    # Write selectionIndices
-    selectionIndices = []
-    for i in range(0, len(threads)):
-        if threads[i].get("no") in selectedSet:
-            selectionIndices.append(i)
-
     # Find 404'd threads
     liveThreadNos = set([thread.get("no") for thread in threads])
     for thread in preSelectedThreads:
         if thread.get("no") not in liveThreadNos:
             print("404: {}".format(friendlyThreadName(thread)[:64]))
 
-    friendlyNames = [friendlyThreadName(thread) for thread in threads]
+    # friendlyNames = [(friendlyThreadName(thread),) for thread in threads]
 
     # print("selectedSet: {}".format(selectedSet))
     # print("selectionIndices: {}".format(selectionIndices))
 
     # Window
-    SW = gui.SelectorWindow("/{}/ threads".format(board), friendlyNames, selectionIndices)
+    SW = gui.SelectorWindow(board, threads, selectedSet)
     # SW.mainloop()
 
     # Break out of a higher loop
     if SW.cancel:
-        raise KeyboardInterrupt("Canceled")
+        raise Exception
+        # raise KeyboardInterrupt("Canceled")
 
     # Indices to thread objects
-    selection = [threads[i] for i in SW.selections]
+    selection = [thread for thread in threads if thread.get("no") in SW.selections]
+    
+    raise Exception
     # print("selections: {}".format(SW.selections))
     return selection
 

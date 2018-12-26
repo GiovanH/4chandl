@@ -4,16 +4,31 @@ import tkinter.font as tkFont
 
 
 class SelectorWindow(tk.Tk):
-    def __init__(self, title, items, selections, *args, **kwargs):
+    def __init__(self, boardname, threads, selectionNos, *args, **kwargs):
         super(SelectorWindow, self).__init__(*args, **kwargs)
 
         self.cancel = False
-        self.selections = selections
+        self.selections = None
+
+        headers = [
+            ("no", "Number",),
+            ("name", "Author",),
+            ("semantic_url", "URL",),
+            ("sub", "Subject",),
+            ("com", "Comment",),
+        ]
+        tablerows = [[str(thread.get(h[0])) for h in headers] for thread in sorted(threads, key=lambda t: -t.get("no"))]
 
         self.protocol("WM_DELETE_WINDOW", self.cmd_cancel)
         self.bind("<Escape>", self.cmd_done)
 
-        self.SelectorFrame = SelectorFrame(self, title, items, selections)
+        self.SelectorFrame = SelectorFrame(
+            self, 
+            "/{}/ threads".format(boardname), 
+            [h[1] for h in headers], 
+            tablerows, 
+            selectionNos
+        )
         self.SelectorFrame.grid(row=8, column=8)
 
         self.columnconfigure(0, weight=1)
@@ -34,22 +49,16 @@ class SelectorWindow(tk.Tk):
 class SelectorFrame(tk.Frame):
 
     # Init and window management
-    def __init__(self, parent, title, items, selections, *args, **kwargs):
+    def __init__(self, parent, title, headers, items, selectionNos, *args, **kwargs):
         tk.Frame.__init__(self, *args, **kwargs)
 
         # Setup GUI parts
         lab_title = lab_title = tk.Label(text=title, font=("Helvetica", 24))
         lab_title.grid(row=0, column=0, sticky=tk.W + tk.E)
 
-        scrollbar = tk.Scrollbar()
-        scrollbar.grid(
-            row=1, column=0, sticky=tk.N + tk.S + tk.E)
-
-        listbox_threads = tk.Listbox(relief=tk.GROOVE, selectmode=tk.MULTIPLE, yscrollcommand=scrollbar.set)
+        listbox_threads = MultiColumnListbox(self, headers, items)
         listbox_threads.grid(
             row=1, column=0, sticky=tk.N + tk.S + tk.E + tk.W, padx=(4, 18))
-
-        scrollbar.config(command=listbox_threads.yview)
 
         # Buttons, in a frame
         frame_buttons = tk.Frame()
@@ -69,36 +78,42 @@ class SelectorFrame(tk.Frame):
         self.listbox_threads = listbox_threads
 
         # Load data
-        self.loadItems(items, selections)
-
-    def loadItems(self, items, selections):
-        for val in items:
-            self.listbox_threads.insert(
-                tk.END, val)
-
-        for index in selections:
-            self.listbox_threads.selection_set(index)
+        listbox_threads.build_tree(headers, items)
+        listbox_threads.modSelection(selectionNos)
 
     def getSelections(self):
-        return self.listbox_threads.curselection()
+        return self.listbox_threads.getSelections()
 
 
 class MultiColumnListbox(tk.Frame):
     """use a ttk.TreeView as a multicolumn ListBox"""
 
-    def __init__(self, parent, headers, tabledata, *args, **kwargs):
+    def __init__(self, parent, headers, tabledata, multiselect=True, *args, **kwargs):
         tk.Frame.__init__(self, *args, **kwargs)
         self.tree = None
+        self.virtual_event = True
         self.headers = headers  # This must remain static.
         self.setup_widgets(headers)
-        self._build_tree(headers, tabledata)
+        self.build_tree(headers, tabledata)
+
+        if multiselect:
+            self.lastSelections = self.getSelections()
+            print(self.tree.keys())
+            self.tree.configure(selectmode=tk.NONE)
+            self.tree.bind("<Button-1>", self.handle_mv_selection)
+
+    def handle_mv_selection(self, event):
+        print(self.virtual_event, event)
+        item = self.tree.identify('item', event.x, event.y)
+        self.tree.selection_toggle(item)
+
+        print("you clicked on", self.tree.item(item, "text"))
 
     def setup_widgets(self, headers):
-        container = tk.Frame()
-        container.pack(fill='both', expand=True)
+        container = self
 
         # Create a treeview with dual scrollbars
-        self.tree = ttk.Treeview(columns=headers, show="headings")
+        self.tree = ttk.Treeview(columns=headers, selectmode=tk.EXTENDED, show="headings")
         vsb = ttk.Scrollbar(orient="vertical", command=self.tree.yview)
         hsb = ttk.Scrollbar(orient="horizontal", command=self.tree.xview)
         self.tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
@@ -123,7 +138,9 @@ class MultiColumnListbox(tk.Frame):
         # switch the heading so it will sort in the opposite direction
         tree.heading(col, command=lambda col=col: self.sortby(tree, col, int(not descending)))
 
-    def _build_tree(self, headers, itemlist):
+    def build_tree(self, headers, itemlist):
+        self.virtual_event = True
+
         for col in headers:
             # Use this for sortable columns.
             # self.tree.heading(col, text=col.title(), command=lambda c=col: self.sortby(self.tree, c, 0))
@@ -133,8 +150,22 @@ class MultiColumnListbox(tk.Frame):
 
         for item in itemlist:
             self.tree.insert('', tk.END, values=item)
+
+        self.virtual_event = False
+
             # adjust column's width if necessary to fit each value
-            for ix, val in enumerate(item):
-                col_w = tkFont.Font().measure(val)
-                if self.tree.column(headers[ix], width=None) < col_w:
-                    self.tree.column(headers[ix], width=col_w)
+            # for ix, val in enumerate(item):
+            #     col_w = tkFont.Font().measure(val)
+            #     if self.tree.column(headers[ix], width=None) < col_w:
+            #         self.tree.column(headers[ix], width=col_w)
+
+    def modSelection(self, selectionNos):
+        select_these_items = [
+            child for child in self.tree.get_children('')
+            if int(self.tree.set(child, "Number")) in selectionNos
+        ]
+        self.tree.selection_set(select_these_items)
+        # self.tree.selection_set()
+
+    def getSelections(self):
+        return [int(self.tree.set(child, "Number")) for child in self.tree.selection()]
