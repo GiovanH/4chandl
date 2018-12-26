@@ -112,14 +112,8 @@ def selectImages(board, preSelectedThreads):
         if thread.get("no") not in liveThreadNos:
             print("404: {}".format(friendlyThreadName(thread)[:64]))
 
-    # friendlyNames = [(friendlyThreadName(thread),) for thread in threads]
-
-    # print("selectedSet: {}".format(selectedSet))
-    # print("selectionIndices: {}".format(selectionIndices))
-
     # Window
     SW = gui.SelectorWindow(board, threads, selectedSet)
-    # SW.mainloop()
 
     # Break out of a higher loop
     if SW.cancel:
@@ -183,7 +177,7 @@ def saveMessageLog(threadno, sem, threadJson, board):
 
     makedirs(msgBase, exist_ok=True)
     with open(filePath, "w", encoding="utf-8") as textfile:
-        print("-----> {}".format(filePath))
+        print("------> {}".format(filePath))
         for post in threadJson.get("posts"):
             textfile.write(formatPost(post))
 
@@ -216,22 +210,19 @@ def download4chanImage(board, sem, post):
     downloadFile(src, dstdir, dstfile, debug=post)
 
 
-def downloadFile(src, dstdir, dstfile, debug=None):
+def downloadFile(src, dstdir, dstfile, debug=None, max_retries=6):
     dstpath = "{}{}".format(dstdir, dstfile)
     makedirs(dstdir, exist_ok=True)
-    try:
-        urlretrieve(src, dstpath)
-        print("{} --> {}".format(src, dstpath))
-    except HTTPError:
-        print("{} -x> {}".format(src, dstpath))
-        print_exc(limit=1)
-        ju.json_save(debug, "error_download_{}".format(dstfile))
-    except ConnectionResetError:
-        print("{} -x> {}".format(src, dstpath))
-        print_exc(limit=1)
-    except URLError:
-        print("{} -x> {}".format(src, dstpath))
-        print_exc(limit=1)
+    retries = 0
+    while (retries < max_retries):
+        try:
+            urlretrieve(src, dstpath)
+            print("{} --> {}".format(src, dstpath))
+        except Exception:
+            print("{} -x> {}".format(src, dstpath))
+            print_exc(limit=1)
+            ju.json_save(debug, "error_download_{}".format(dstfile))
+            retries += 1
 
 
 def main():
