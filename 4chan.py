@@ -14,41 +14,75 @@ import progressbar
 import html.parser
 
 
-class SelectorWindow(tk.Frame):
+class SelectorWindow(tk.Tk):
+    def __init__(self, title, items, selections, *args, **kwargs):
+        super(SelectorWindow, self).__init__(*args, **kwargs)
+
+        self.cancel = False
+        self.selections = selections
+
+        self.protocol("WM_DELETE_WINDOW", self.cmd_cancel)
+        self.bind("<Escape>", self.cmd_done)
+
+        self.SelectorFrame = SelectorFrame(self, title, items, selections)
+        self.SelectorFrame.grid(row=8, column=8)
+
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(1, weight=1)
+        self.geometry("600x800")
+
+        self.mainloop()
+
+    def cmd_cancel(self, event=None):
+        self.cancel = True
+        self.destroy()
+
+    def cmd_done(self, event=None):
+        self.selections = self.SelectorFrame.getSelections()
+        self.destroy()
+
+
+class SelectorFrame(tk.Frame):
 
     # Init and window management
     def __init__(self, parent, title, items, selections, *args, **kwargs):
-        tk.Frame.__init__(self, parent, *args, **kwargs)
-        self.parent = parent
-        self.selections = selections
-        self.cancel = False
+        tk.Frame.__init__(self, *args, **kwargs)
 
-        self.parent.protocol("WM_DELETE_WINDOW", self.cmd_cancel)
+        # Setup GUI parts
+        lab_title = lab_title = tk.Label(text=title, font=("Helvetica", 24))
+        lab_title.grid(row=0, column=0, sticky=tk.W + tk.E)
 
-        self.lab_title = tk.Label(text=title, font=("Helvetica", 24))
-        self.lab_title.grid(row=0, column=0, sticky=tk.W + tk.E, columnspan=2)
+        scrollbar = tk.Scrollbar()
+        scrollbar.grid(
+            row=1, column=0, sticky=tk.N + tk.S + tk.E)
 
-        self.scrollbar = tk.Scrollbar()
-        self.scrollbar.grid(
-            row=1, column=1, sticky=tk.N + tk.S + tk.E)
+        listbox_threads = tk.Listbox(relief=tk.GROOVE, selectmode=tk.MULTIPLE, yscrollcommand=scrollbar.set)
+        listbox_threads.grid(
+            row=1, column=0, sticky=tk.N + tk.S + tk.E + tk.W, padx=(4, 18))
 
-        self.listbox_threads = tk.Listbox(relief=tk.GROOVE, selectmode=tk.MULTIPLE, yscrollcommand=self.scrollbar.set)
-        self.listbox_threads.grid(
-            row=1, column=0, sticky=tk.N + tk.S + tk.E + tk.W, padx=(4, 18), columnspan=2)
+        scrollbar.config(command=listbox_threads.yview)
 
-        self.btn_cancel = tk.Button(text="Update Now", command=self.cmd_cancel)
-        self.btn_cancel.grid(
-            row=2, column=0, sticky=tk.W + tk.E, padx=4, pady=4)
+        # Buttons, in a frame
+        frame_buttons = tk.Frame()
+        frame_buttons.grid(row=2, column=0, sticky="sew")
 
-        self.btn_done = tk.Button(text="Next", command=self.cmd_done)
-        self.btn_done.grid(row=2, column=1, sticky=tk.W + tk.E, padx=4, pady=4)
+        # Space buttons evenly
+        frame_buttons.grid_columnconfigure(0, weight=1)
+        frame_buttons.grid_columnconfigure(1, weight=1)
 
-        self.parent.bind("<Escape>", self.cmd_done)
-        self.parent.columnconfigure(0, weight=1)
-        self.parent.columnconfigure(1, weight=1)
-        self.parent.rowconfigure(1, weight=1)
-        self.parent.geometry("600x800")
+        btn_done = tk.Button(master=frame_buttons, text="Next", command=parent.cmd_done)
+        btn_done.grid(row=0, column=1, sticky="sew", padx=4, pady=4)
 
+        btn_cancel = tk.Button(frame_buttons, text="Update Now", command=parent.cmd_cancel)
+        btn_cancel.grid(row=0, column=0, sticky="sew", padx=4, pady=4)
+
+        # Expose interfaces
+        self.listbox_threads = listbox_threads
+
+        # Load data
+        self.loadItems(items, selections)
+
+    def loadItems(self, items, selections):
         for val in items:
             self.listbox_threads.insert(
                 tk.END, val)
@@ -56,15 +90,8 @@ class SelectorWindow(tk.Frame):
         for index in selections:
             self.listbox_threads.selection_set(index)
 
-        self.scrollbar.config(command=self.listbox_threads.yview)
-
-    def cmd_cancel(self, event=None):
-        self.cancel = True
-        self.parent.destroy()
-
-    def cmd_done(self, event=None):
-        self.selections = self.listbox_threads.curselection()
-        self.parent.destroy()
+    def getSelections(self):
+        return self.listbox_threads.curselection()
 
 
 class HTMLTextExtractor(html.parser.HTMLParser):
@@ -178,9 +205,8 @@ def selectImages(board, preSelectedThreads):
     # print("selectionIndices: {}".format(selectionIndices))
 
     # Window
-    Tk = tk.Tk()
-    SW = SelectorWindow(Tk, "/{}/ threads".format(board), friendlyNames, selectionIndices)
-    Tk.mainloop()
+    SW = SelectorWindow("/{}/ threads".format(board), friendlyNames, selectionIndices)
+    # SW.mainloop()
 
     # Break out of a higher loop
     if SW.cancel:
