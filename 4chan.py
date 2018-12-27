@@ -9,6 +9,7 @@ from urllib.error import HTTPError, URLError
 from os import makedirs, path
 from traceback import print_exc
 from json.decoder import JSONDecodeError
+import timeout_decorator
 import progressbar
 
 import html.parser
@@ -210,17 +211,22 @@ def download4chanImage(board, sem, post):
     downloadFile(src, dstdir, dstfile, debug=post)
 
 
+def exec_with_timeout(secs, func, *args, **kwargs):
+    return timeout_decorator.timeout(secs, use_signals=False)(func)(*args)
+
+
 def downloadFile(src, dstdir, dstfile, debug=None, max_retries=6):
     dstpath = "{}{}".format(dstdir, dstfile)
     makedirs(dstdir, exist_ok=True)
     retries = 0
+
     while (retries < max_retries):
         try:
-            urlretrieve(src, dstpath)
+            exec_with_timeout(8, urlretrieve, src, dstpath)
             print("{} --> {}".format(src, dstpath))
         except Exception:
             print("{} -x> {}".format(src, dstpath))
-            print_exc(limit=1)
+            print_exc(limit=3)
             ju.json_save(debug, "error_download_{}".format(dstfile))
             retries += 1
 
