@@ -128,11 +128,7 @@ def selectImages(board, preSelectedThreads):
 
 
 def saveThreads(board, queue):
-    pbar = progressbar.ProgressBar(max_value=len(queue), redirect_stdout=True)
-    i = 0
     for thread in queue:
-        i += 1
-        pbar.update(i)
 
         threadno = thread.get("no")
         threadurl = "https://a.4cdn.org/{}/thread/{}.json".format(board, threadno)
@@ -149,17 +145,33 @@ def saveThreads(board, queue):
             print("Error with thread [{}] {}".format(threadno, threadurl))
             print_exc(limit=1)
             ju.json_save(thread, "error_thread_{}".format(threadno))
-    pbar.finish()
 
 
 def saveImageLog(threadJson, board, sem):
     skips = 0   
-    for post in threadJson.get("posts"):
+    threadPosts = threadJson.get("posts")
+    totalSize = sum([post.get("fsize") for post in threadPosts if post.get("fsize")])
+    widgets = [
+        sem,
+        ' ', progressbar.FileTransferSpeed(),
+        ' ', progressbar.Percentage(),
+        ' ', progressbar.Bar(),
+        ' ', progressbar.Timer(),
+        ' ', progressbar.AdaptiveETA(),
+    ]
+    pbar = progressbar.ProgressBar(max_value=totalSize, widgets=widgets, redirect_stdout=True)
+    i = 0
+    for post in threadPosts:
         if post.get("ext"):
+            fsize = post.get("fsize")
             try:
+                pbar.update(fsize)
                 download4chanImage(board, sem, post)
+                i += fsize
+                pbar.update(i)
             except FileExistsError:
                 skips += 1
+    pbar.finish()
     if (skips > 0):
         print("Skipped {:>3} existing images. ".format(skips))
 
@@ -224,12 +236,15 @@ def downloadFile(src, dstdir, dstfile, debug=None, max_retries=4):
         try:
             exec_with_timeout(8, urlretrieve, src, dstpath)
             print("{} --> {}".format(src, dstpath))
-        except (HTTPError, URLError, timeout_decorator.TimeoutError) as e:
+            return
+        except (HTTPError, URLError) as e:
             print("{} -x> {}".format(src, dstpath))
             print_exc(limit=3)
             ju.json_save(debug, "error_download_{}".format(dstfile))
-            retries += 1
-            print("{}/{}".format(retries, max_retries))
+        except timeout_decorator.TimeoutError as e:
+            print("{} -x> {} [Timeout]".format(src, dstpath))
+        retries += 1
+        print("{}/{}".format(retries, max_retries))
 
 
 def main():
