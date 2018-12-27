@@ -21,24 +21,14 @@ import html.parser
 # 4. Refactor consumption code to read object attributes
 # 5. Extend mappings file
 
-
-class HTMLTextExtractor(html.parser.HTMLParser):
-    def __init__(self):
-        super(HTMLTextExtractor, self).__init__()
-        self.result = []
-
-    def handle_data(self, d):
-        self.result.append(d)
-
-    def get_text(self):
-        return ''.join(self.result)
+# Utility functions and classes
 
 
-def html_to_text(html):
-    s = HTMLTextExtractor()
-    s.feed(html)
-    return s.get_text()
+def exec_with_timeout(secs, func, *args, **kwargs):
+    return timeout_decorator.timeout(secs, use_signals=False)(func)(*args)
 
+
+# Filesystem IO
 
 def loadBoards():
     filename = "Boards" 
@@ -51,6 +41,20 @@ def loadBoards():
         print("Missing the boards file. A sample has been generated.")
         print("Please edit the template file in the jobj folder!")
         return example
+
+# Parsing
+
+
+class HTMLTextExtractor(html.parser.HTMLParser):
+    def __init__(self):
+        super(HTMLTextExtractor, self).__init__()
+        self.result = []
+
+    def handle_data(self, d):
+        self.result.append(d)
+
+    def get_text(self):
+        return ''.join(self.result)
 
 
 def trimObj(obj, interest):
@@ -78,6 +82,28 @@ def trimThread(thread):
     return trimObj(thread, interest)
 
 
+def html_to_text(html):
+    s = HTMLTextExtractor()
+    s.feed(html)
+    return s.get_text()
+
+
+def formatPost(post):
+    subfields = ["sub", "name", "now", "no"]
+    subline = " ".join([str(post.get(field))
+                        for field in subfields if post.get(field) is not None])
+    return "\
+    <div class='post'><span class='subline' id='p{no}'>>{subline} >>{no}</span>\n \
+    <span class='file'>File: {file}</span>\n \
+    {com}</div>".format(
+        subline=subline,
+        no=post.get("no"),
+        file=(post.get("filename") + post.get("ext")
+              if post.get("filename") else "None"),
+        com=(("\n<p>" + post.get("com") + "</p>") if post.get("com") else "")
+    )
+
+
 def getThreads(board):
     try:
         catalog = requests.get("https://a.4cdn.org/{}/{}.json".format(board, "catalog"))
@@ -91,47 +117,7 @@ def getThreads(board):
         for thread in page.get("threads"):
             yield trimThread(thread)
 
-
-def friendlyThreadName(thread):
-    sub = thread.get("sub")
-    com = thread.get("com")
-    sem = thread.get("semantic_url")
-    auth = thread.get("name")
-    
-    tname = ""
-    if sub:
-        tname += "[{}] ".format(sub)
-    if com:
-        tname += "{} ".format(html_to_text(com))
-    if sem:
-        tname += "/{} ".format(sem)
-    tname += " ~{}".format(auth)
-
-    return tname
-
-
-def selectImages(board, preSelectedThreads):
-    selectedSet = set([thread.get("no") for thread in preSelectedThreads])
-    threads = list(getThreads(board))
-
-    # Find 404'd threads
-    liveThreadNos = set([thread.get("no") for thread in threads])
-    for thread in preSelectedThreads:
-        if thread.get("no") not in liveThreadNos:
-            print("404: {}".format(friendlyThreadName(thread)[:64]))
-
-    # Window
-    SW = gui.SelectorWindow(board, threads, selectedSet)
-
-    # Break out of a higher loop
-    if SW.cancel:
-        raise KeyboardInterrupt("Canceled")
-
-    # Indices to thread objects
-    selection = [thread for thread in threads if thread.get("no") in SW.selections]
-    
-    # print("selections: {}".format(SW.selections))
-    return selection
+# Saving
 
 
 def saveThreads(board, queue):
@@ -154,7 +140,7 @@ def saveThreads(board, queue):
             ju.json_save(thread, "error_thread_{}".format(threadno))
 
 
-def saveImageLog(threadJson, board, sem):
+def saveImageLog(threadJson, board, sem, verbose=False):
     skips = 0   
     threadPosts = threadJson.get("posts")
     totalSize = sum([post.get("fsize") for post in threadPosts if post.get("fsize")])
@@ -182,7 +168,7 @@ def saveImageLog(threadJson, board, sem):
                 pbar.update(i) 
                 skips += 1 
     pbar.finish() 
-    if (skips > 0): 
+    if (skips > 0) and verbose: 
         print("Skipped {:>3} existing images. ".format(skips)) 
 
 
@@ -205,22 +191,6 @@ def saveMessageLog(threadno, sem, threadJson, board):
             textfile.write(formatPost(post))
 
 
-def formatPost(post):
-    subfields = ["sub", "name", "now", "no"]
-    subline = " ".join([str(post.get(field))
-                        for field in subfields if post.get(field) is not None])
-    return "\
-    <div class='post'><span class='subline' id='p{no}'>>{subline} >>{no}</span>\n \
-    <span class='file'>File: {file}</span>\n \
-    {com}</div>".format(
-        subline=subline,
-        no=post.get("no"),
-        file=(post.get("filename") + post.get("ext")
-              if post.get("filename") else "None"),
-        com=(("\n<p>" + post.get("com") + "</p>") if post.get("com") else "")
-    )
-
-
 def downloadChanImage(board, sem, post):
     dstdir = "./saved/{}/{}/".format(board, sem)
     dstfile = "{}{}".format(post.get("tim"), post.get("ext"))
@@ -231,10 +201,6 @@ def downloadChanImage(board, sem, post):
     src = "https://i.4cdn.org/{}/{}{}".format(
         board, post.get("tim"), post.get("ext"))
     downloadFile(src, dstdir, dstfile, debug=post)
-
-
-def exec_with_timeout(secs, func, *args, **kwargs):
-    return timeout_decorator.timeout(secs, use_signals=False)(func)(*args)
 
 
 def downloadFile(src, dstdir, dstfile, debug=None, max_retries=5, verbose=False):
@@ -260,6 +226,33 @@ def downloadFile(src, dstdir, dstfile, debug=None, max_retries=5, verbose=False)
                 print("{} -x> {} [Timeout]".format(src, dstpath))
         retries += 1
         # print("Retrying [{}/{}]".format(retries, max_retries))
+
+
+# Main logic
+
+
+def selectImages(board, preSelectedThreads):
+    selectedSet = set([thread.get("no") for thread in preSelectedThreads])
+    threads = list(getThreads(board))
+
+    # Find 404'd threads
+    liveThreadNos = set([thread.get("no") for thread in threads])
+    for thread in preSelectedThreads:
+        if thread.get("no") not in liveThreadNos:
+            print("404: {}".format(thread.get("semantic_url")))
+
+    # Window
+    SW = gui.SelectorWindow(board, threads, selectedSet)
+
+    # Break out of a higher loop
+    if SW.cancel:
+        raise KeyboardInterrupt("Canceled")
+
+    # Indices to thread objects
+    selection = [thread for thread in threads if thread.get("no") in SW.selections]
+    
+    # print("selections: {}".format(SW.selections))
+    return selection
 
 
 def main():
