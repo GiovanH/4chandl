@@ -151,29 +151,32 @@ def saveImageLog(threadJson, board, sem):
     skips = 0   
     threadPosts = threadJson.get("posts")
     totalSize = sum([post.get("fsize") for post in threadPosts if post.get("fsize")])
-    widgets = [
-        sem,
-        ' ', progressbar.FileTransferSpeed(),
-        ' ', progressbar.Percentage(),
-        ' ', progressbar.Bar(),
-        ' ', progressbar.Timer(),
-        ' ', progressbar.AdaptiveETA(),
-    ]
-    pbar = progressbar.ProgressBar(max_value=totalSize, widgets=widgets, redirect_stdout=True)
-    i = 0
-    for post in threadPosts:
-        if post.get("ext"):
-            fsize = post.get("fsize")
-            try:
-                pbar.update(fsize)
-                download4chanImage(board, sem, post)
-                i += fsize
-                pbar.update(i)
-            except FileExistsError:
-                skips += 1
-    pbar.finish()
-    if (skips > 0):
-        print("Skipped {:>3} existing images. ".format(skips))
+    widgets = [ 
+        sem, 
+        ' ', progressbar.DataSize(), 
+        ' ', progressbar.Percentage(), 
+        ' ', progressbar.Bar(), 
+        ' ', progressbar.FileTransferSpeed(), 
+        ' ', progressbar.Timer(), 
+        ' ', progressbar.AdaptiveETA(), 
+    ] 
+    pbar = progressbar.ProgressBar(max_value=totalSize, widgets=widgets, redirect_stdout=True) 
+    i = 0 
+    for post in threadPosts: 
+        if post.get("ext"): 
+            fsize = post.get("fsize") 
+            try: 
+                pbar.update(fsize) 
+                downloadChanImage(board, sem, post) 
+                i += fsize 
+                pbar.update(i) 
+            except FileExistsError: 
+                # print("[BAR] Reducing max value {} by {}".format(pbar.max_value, fsize)) 
+                pbar.max_value -= fsize 
+                skips += 1 
+    pbar.finish() 
+    if (skips > 0): 
+        print("Skipped {:>3} existing images. ".format(skips)) 
 
 
 def saveMessageLog(threadno, sem, threadJson, board):
@@ -211,7 +214,7 @@ def formatPost(post):
     )
 
 
-def download4chanImage(board, sem, post):
+def downloadChanImage(board, sem, post):
     dstdir = "./saved/{}/{}/".format(board, sem)
     dstfile = "{}{}".format(post.get("tim"), post.get("ext"))
 
