@@ -215,7 +215,7 @@ def exec_with_timeout(secs, func, *args, **kwargs):
     return timeout_decorator.timeout(secs, use_signals=False)(func)(*args)
 
 
-def downloadFile(src, dstdir, dstfile, debug=None, max_retries=6):
+def downloadFile(src, dstdir, dstfile, debug=None, max_retries=4):
     dstpath = "{}{}".format(dstdir, dstfile)
     makedirs(dstdir, exist_ok=True)
     retries = 0
@@ -224,11 +224,12 @@ def downloadFile(src, dstdir, dstfile, debug=None, max_retries=6):
         try:
             exec_with_timeout(8, urlretrieve, src, dstpath)
             print("{} --> {}".format(src, dstpath))
-        except Exception:
+        except (HTTPError, URLError, timeout_decorator.TimeoutError) as e:
             print("{} -x> {}".format(src, dstpath))
             print_exc(limit=3)
             ju.json_save(debug, "error_download_{}".format(dstfile))
             retries += 1
+            print("{}/{}".format(retries, max_retries))
 
 
 def main():

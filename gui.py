@@ -30,7 +30,7 @@ class SelectorWindow(tk.Tk):
             tablerows, 
             selectionNos
         )
-        self.SelectorFrame.grid(row=8, column=8)
+        self.SelectorFrame.grid()
 
         self.columnconfigure(0, weight=1)
         self.rowconfigure(1, weight=1)
