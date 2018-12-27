@@ -15,7 +15,7 @@ class SelectorWindow(tk.Tk):
             ("name", "Author",),
             ("sub", "Subject",),
             ("com", "Comment",),
-            ("time", "Time",),
+            # ("time", "Time",),
             ("semantic_url", "URL",),
         ]
         tablerows = [[str(thread.get(h[0])) for h in headers] for thread in sorted(threads, key=lambda t: -t.get("no"))]
