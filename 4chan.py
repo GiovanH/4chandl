@@ -34,8 +34,8 @@ def html_to_text(html):
 
 
 def loadBoards():
-    filename = "4chanBoards"
-    example = ["wsg", "biz", "gd"]
+    filename = "Boards" 
+    example = {"4chan": ["wsg", "biz", "gd"]} 
     try:
         boards = ju.json_load(filename)
         return boards
@@ -249,7 +249,7 @@ def downloadFile(src, dstdir, dstfile, debug=None, max_retries=4):
 
 def main():
     # Load
-    boards = loadBoards()
+    boards = loadBoards().get("4chan") 
     try:
         downloadQueue = ju.json_load("downloadQueue")
     except FileNotFoundError:
@@ -265,6 +265,7 @@ def main():
         ju.json_save(downloadQueue, "downloadQueue")
     except KeyboardInterrupt:
         print("Selections canceled, jumping straight to downloading threads. ")
+        ju.json_save(downloadQueue, "downloadQueue")
 
     # Run downloads
     for board in list(downloadQueue.keys()):
