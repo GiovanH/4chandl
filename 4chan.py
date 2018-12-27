@@ -14,6 +14,13 @@ import progressbar
 
 import html.parser
 
+# Making this extensible to boards like 8chan:
+# 1. Make a API mappings file
+# 2. Make classes for: Threads, Posts, Chans
+# 3. Refactor production code to create objects based on mappings
+# 4. Refactor consumption code to read object attributes
+# 5. Extend mappings file
+
 
 class HTMLTextExtractor(html.parser.HTMLParser):
     def __init__(self):
@@ -152,8 +159,7 @@ def saveImageLog(threadJson, board, sem):
     threadPosts = threadJson.get("posts")
     totalSize = sum([post.get("fsize") for post in threadPosts if post.get("fsize")])
     widgets = [ 
-        sem, 
-        ' ', progressbar.DataSize(), 
+        sem,  
         ' ', progressbar.Percentage(), 
         ' ', progressbar.Bar(), 
         ' ', progressbar.FileTransferSpeed(), 
@@ -173,6 +179,7 @@ def saveImageLog(threadJson, board, sem):
             except FileExistsError: 
                 # print("[BAR] Reducing max value {} by {}".format(pbar.max_value, fsize)) 
                 pbar.max_value -= fsize 
+                pbar.update(i) 
                 skips += 1 
     pbar.finish() 
     if (skips > 0): 
@@ -230,24 +237,29 @@ def exec_with_timeout(secs, func, *args, **kwargs):
     return timeout_decorator.timeout(secs, use_signals=False)(func)(*args)
 
 
-def downloadFile(src, dstdir, dstfile, debug=None, max_retries=4):
+def downloadFile(src, dstdir, dstfile, debug=None, max_retries=5, verbose=False):
     dstpath = "{}{}".format(dstdir, dstfile)
     makedirs(dstdir, exist_ok=True)
     retries = 0
 
     while (retries < max_retries):
         try:
-            exec_with_timeout(8, urlretrieve, src, dstpath)
-            print("{} --> {}".format(src, dstpath))
+            exec_with_timeout((5 + 3 * retries), urlretrieve, src, dstpath)
+            if verbose:
+                print("{} --> {}".format(src, dstpath))
             return
         except (HTTPError, URLError) as e:
             print("{} -x> {}".format(src, dstpath))
-            print_exc(limit=3)
+            if verbose:
+                print_exc(limit=5)
+            else:
+                print_exc(limit=2)
             ju.json_save(debug, "error_download_{}".format(dstfile))
         except timeout_decorator.TimeoutError as e:
-            print("{} -x> {} [Timeout]".format(src, dstpath))
+            if verbose:
+                print("{} -x> {} [Timeout]".format(src, dstpath))
         retries += 1
-        print("{}/{}".format(retries, max_retries))
+        # print("Retrying [{}/{}]".format(retries, max_retries))
 
 
 def main():
