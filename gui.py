@@ -30,10 +30,10 @@ class SelectorWindow(tk.Tk):
             tablerows, 
             selectionNos
         )
-        self.SelectorFrame.grid()
+        self.SelectorFrame.grid(sticky="nsew")
 
         self.columnconfigure(0, weight=1)
-        self.rowconfigure(1, weight=1)
+        self.rowconfigure(0, weight=1)
         self.geometry("600x800")
 
         self.mainloop()
@@ -51,35 +51,40 @@ class SelectorFrame(tk.Frame):
 
     # Init and window management
     def __init__(self, parent, title, headers, items, selectionNos, *args, **kwargs):
-        tk.Frame.__init__(self, *args, **kwargs)
+        tk.Frame.__init__(self, parent, *args, **kwargs)
 
         # Setup GUI parts
-        lab_title = lab_title = tk.Label(text=title, font=("Helvetica", 24))
-        lab_title.grid(row=0, column=0, sticky=tk.W + tk.E)
-
-        listbox_threads = MultiColumnListbox(self, headers, items, multiselect=True)
-        listbox_threads.grid(
-            row=1, column=0, sticky=tk.N + tk.S + tk.E + tk.W, padx=(4, 18))
+        lab_title = lab_title = tk.Label(self, text=title, font=("Helvetica", 24))
+        lab_title.grid(row=0, column=0, sticky="we")
+        
+        listbox_threads = MultiColumnListbox(self, headers, items, multiselect=True, hscroll=True)
+        listbox_threads.grid(row=1, column=0, sticky="nsew", padx=(4, 18))
 
         # Buttons, in a frame
-        frame_buttons = tk.Frame()
+        frame_buttons = tk.Frame(self)
         frame_buttons.grid(row=2, column=0, sticky="sew")
 
         # Space buttons evenly
         frame_buttons.grid_columnconfigure(0, weight=1)
         frame_buttons.grid_columnconfigure(1, weight=1)
 
-        btn_done = tk.Button(master=frame_buttons, text="Next", command=parent.cmd_done)
+        btn_done = tk.Button(frame_buttons, text="Next", command=parent.cmd_done)
         btn_done.grid(row=0, column=1, sticky="sew", padx=4, pady=4)
 
         btn_cancel = tk.Button(frame_buttons, text="Update Now", command=parent.cmd_cancel)
         btn_cancel.grid(row=0, column=0, sticky="sew", padx=4, pady=4)
+
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(1, weight=1)
 
         # Expose interfaces
         self.listbox_threads = listbox_threads
 
         # Load data
         listbox_threads.modSelection(selectionNos)
+
+        # for w in [self, lab_title, listbox_threads, frame_buttons, btn_cancel, btn_done]:
+        #     print(w, "in", w.master)
 
     def getSelections(self):
         return self.listbox_threads.getSelections()
@@ -88,12 +93,15 @@ class SelectorFrame(tk.Frame):
 class MultiColumnListbox(tk.Frame):
     """use a ttk.TreeView as a multicolumn ListBox"""
 
-    def __init__(self, parent, headers, tabledata, multiselect=False, sortable=True, *args, **kwargs):
-        tk.Frame.__init__(self, *args, **kwargs)
+    def __init__(self, parent, headers, tabledata, multiselect=False, sortable=True, vscroll=True, hscroll=False, *args, **kwargs):
+        tk.Frame.__init__(self, parent, *args, **kwargs)
         self.tree = None
         self.sortable = sortable
         self.headers = headers  # This must remain static.
-        self.setup_widgets(headers)
+
+        self.temporary_items = []
+
+        self.setup_widgets(headers, vscroll=vscroll, hscroll=hscroll)
         self.build_tree(headers, tabledata)
 
         if multiselect:
@@ -104,18 +112,21 @@ class MultiColumnListbox(tk.Frame):
         item = self.tree.identify('item', event.x, event.y)
         self.tree.selection_toggle(item)
 
-    def setup_widgets(self, headers):
+    def setup_widgets(self, headers, vscroll=True, hscroll=True):
         container = self
 
         # Create a treeview with dual scrollbars
-        self.tree = ttk.Treeview(columns=headers, selectmode=tk.EXTENDED, show="headings")
-        vsb = ttk.Scrollbar(orient="vertical", command=self.tree.yview)
-        hsb = ttk.Scrollbar(orient="horizontal", command=self.tree.xview)
-        self.tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
-
+        self.tree = ttk.Treeview(self, columns=headers, selectmode=tk.EXTENDED, show="headings")
         self.tree.grid(column=0, row=0, sticky='nsew', in_=container)
-        vsb.grid(column=1, row=0, sticky='ns', in_=container)
-        hsb.grid(column=0, row=1, sticky='ew', in_=container)
+
+        if vscroll:
+            vsb = ttk.Scrollbar(orient="vertical", command=self.tree.yview)
+            vsb.grid(column=1, row=0, sticky='ns', in_=container)
+            self.tree.configure(yscrollcommand=vsb.set)
+        if hscroll:
+            hsb = ttk.Scrollbar(orient="horizontal", command=self.tree.xview)
+            hsb.grid(column=0, row=1, sticky='ew', in_=container)
+            self.tree.configure(xscrollcommand=hsb.set)
 
         container.grid_columnconfigure(0, weight=1)
         container.grid_rowconfigure(0, weight=1)
@@ -135,28 +146,40 @@ class MultiColumnListbox(tk.Frame):
         # switch the heading so it will sort in the opposite direction
         tree.heading(col, command=lambda col=col: self.sortby(tree, col, int(not descending)))
 
-    def build_tree(self, headers, itemlist):
+    def build_tree(self, headers, itemlist, resize=True):
         for col in headers:
             if self.sortable:
                 self.tree.heading(col, text=col.title(), command=lambda c=col: self.sortby(self.tree, c, 0))
             else:
                 self.tree.heading(col, text=col.title())
-            # adjust the column's width to the header string
-            self.tree.column(col, width=tkFont.Font().measure(col.title()))
+            if resize:
+                # adjust the column's width to the header string
+                self.tree.column(col, width=tkFont.Font().measure(col.title()))
 
-        # Super dirty average
-        avgs = [0] * len(headers)
+        if resize:
+            # Super dirty average
+            avgs = [0] * len(headers)
 
+            for item in itemlist:
+                newitem = self.tree.insert('', tk.END, values=item)
+                self.temporary_items.append(newitem)
+
+                # adjust column's width if necessary to fit each value
+                for ix, val in enumerate(item):
+                    col_w = tkFont.Font().measure(val)
+                    avgs[ix] = (col_w + avgs[ix]) / 2  
+
+            for i in range(0, len(headers)):
+                self.tree.column(headers[i], width=min(int(avgs[i]), 480))
+        else:
+            for item in itemlist:
+                newitem = self.tree.insert('', tk.END, values=item)
+                self.temporary_items.append(newitem)
+
+    def update_tree(self, itemlist, resize=True):
+        self.tree.delete(*self.tree.get_children())
         for item in itemlist:
             self.tree.insert('', tk.END, values=item)
-
-            # adjust column's width if necessary to fit each value
-            for ix, val in enumerate(item):
-                col_w = tkFont.Font().measure(val)
-                avgs[ix] = (col_w + avgs[ix]) / 2  
-
-        for i in range(0, len(headers)):
-            self.tree.column(headers[i], width=min(int(avgs[i]), 480))
 
     def modSelection(self, selectionNos):
         select_these_items = [
