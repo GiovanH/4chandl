@@ -214,7 +214,7 @@ def downloadFile(src, dstdir, dstfile, debug=None, max_retries=5, verbose=False)
             if verbose:
                 print("{} --> {}".format(src, dstpath))
             return
-        except (HTTPError, URLError) as e:
+        except (HTTPError, URLError, ConnectionResetError) as e:
             print("{} -x> {}".format(src, dstpath))
             if verbose:
                 print_exc(limit=5)

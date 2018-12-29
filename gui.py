@@ -97,7 +97,6 @@ class MultiColumnListbox(tk.Frame):
         self.build_tree(headers, tabledata)
 
         if multiselect:
-            self.lastSelections = self.getSelections()
             self.tree.configure(selectmode=tk.NONE)
             self.tree.bind("<Button-1>", self.handle_multiselect_click)
 
