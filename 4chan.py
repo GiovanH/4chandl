@@ -280,7 +280,7 @@ def main():
             downloadQueue[board] = oldSelection  # Fallback
             selection = selectImages(board, oldSelection)
             downloadQueue[board] = selection
-        ju.json_save(downloadQueue, "downloadQueue")
+            ju.json_save(downloadQueue, "downloadQueue")
     except KeyboardInterrupt:
         print("Selections canceled, jumping straight to downloading threads. ")
         ju.json_save(downloadQueue, "downloadQueue")

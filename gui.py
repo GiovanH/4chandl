@@ -172,8 +172,9 @@ class MultiColumnListbox(tk.Frame):
 
                 # adjust column's width if necessary to fit each value
                 for ix, val in enumerate(item):
-                    col_w = tkFont.Font().measure(val)
-                    avgs[ix] = (col_w + avgs[ix]) / 2  
+                    if str(val) != str(None):
+                        col_w = tkFont.Font().measure(val)
+                        avgs[ix] = (col_w + avgs[ix]) / 2  
 
             for i in range(0, len(headers)):
                 self.tree.column(headers[i], width=min(int(avgs[i]), 480))
