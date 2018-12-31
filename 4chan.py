@@ -106,7 +106,7 @@ def formatPost(post):
 
 def getThreads(board):
     try:
-        catalog = requests.get("https://a.4cdn.org/{}/{}.json".format(board, "catalog"))
+        catalog = requests.get("https://8ch.net/{}/threads.json".format(board))
         if not catalog.ok:
             catalog.raise_for_status()
         catalog = catalog.json()
@@ -124,7 +124,7 @@ def saveThreads(board, queue):
     for thread in queue:
 
         threadno = thread.get("no")
-        threadurl = "https://a.4cdn.org/{}/thread/{}.json".format(board, threadno)
+        threadurl = "https://8ch.net/{}/res/{}.json".format(board, threadno)
         try:
             # Get thread data
             threadJson = requests.get(threadurl).json()
@@ -198,8 +198,7 @@ def downloadChanImage(board, sem, post):
     if (path.exists("{}{}".format(dstdir, dstfile))):
         raise FileExistsError(dstfile)
 
-    src = "https://i.4cdn.org/{}/{}{}".format(
-        board, post.get("tim"), post.get("ext"))
+    src = "https://media.8ch.net/file_store/{}{}".format(post.get("tim"), post.get("ext"))
     downloadFile(src, dstdir, dstfile, debug=post)
 
 
