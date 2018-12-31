@@ -174,7 +174,7 @@ def saveImageLog(threadJson, board, sem, verbose=False):
 
 def saveMessageLog(threadno, sem, threadJson, board):
     msgBase = "./saved/text/{}/".format(board)
-    filePath = "{}{}_{}.htm".format(msgBase, threadno, sem)
+    filePath = "{}{s}_{n}.htm".format(msgBase, s=sem, n=threadno)
 
     try:
         lastPostTime = threadJson.get("posts")[-1].get("time")
