@@ -2,23 +2,23 @@ import tkinter as tk
 from tkinter import ttk
 import tkinter.font as tkFont
 
+import enum
+
+
+class Result(enum.Enum):
+    RUNNING = enum.auto()
+    NEXT = enum.auto()
+    DONE = enum.auto()
+    CANCEL = enum.auto()
+
 
 class SelectorWindow(tk.Tk):
-    def __init__(self, boardname, threads, selectionNos, *args, **kwargs):
+    def __init__(self, boardname, headers, tablerows, selectionNos, *args, **kwargs):
         super(SelectorWindow, self).__init__(*args, **kwargs)
 
         self.cancel = False
         self.selections = None
-
-        headers = [
-            ("no", "Number",),
-            ("name", "Author",),
-            ("sub", "Subject",),
-            ("com", "Comment",),
-            # ("time", "Time",),
-            ("semantic_url", "URL",),
-        ]
-        tablerows = [[str(thread.get(h[0])) for h in headers] for thread in sorted(threads, key=lambda t: -t.get("no"))]
+        self.RESULT = Result.RUNNING
 
         self.protocol("WM_DELETE_WINDOW", self.cmd_cancel)
         self.bind("<Escape>", self.cmd_done)
@@ -26,7 +26,7 @@ class SelectorWindow(tk.Tk):
         self.SelectorFrame = SelectorFrame(
             self, 
             "/{}/ threads".format(boardname), 
-            [h[1] for h in headers], 
+            headers, 
             tablerows, 
             selectionNos
         )
@@ -40,10 +40,12 @@ class SelectorWindow(tk.Tk):
 
     def cmd_cancel(self, event=None):
         self.cancel = True
+        self.RESULT = Result.CANCEL
         self.destroy()
 
     def cmd_done(self, event=None):
         self.selections = self.SelectorFrame.getSelections()
+        self.RESULT = Result.DONE
         self.destroy()
 
 
@@ -51,6 +53,10 @@ class SelectorFrame(tk.Frame):
 
     # Init and window management
     def __init__(self, parent, title, headers, items, selectionNos, *args, **kwargs):
+
+        if "ID" not in headers:
+            raise AssertionError("SelectorFrame MUST have data field 'ID'!")
+
         tk.Frame.__init__(self, parent, *args, **kwargs)
 
         # Setup GUI parts
@@ -68,10 +74,10 @@ class SelectorFrame(tk.Frame):
         frame_buttons.grid_columnconfigure(0, weight=1)
         frame_buttons.grid_columnconfigure(1, weight=1)
 
-        btn_done = tk.Button(frame_buttons, text="Next", command=parent.cmd_done)
+        btn_done = tk.Button(frame_buttons, text="Save and Continue", command=parent.cmd_done)
         btn_done.grid(row=0, column=1, sticky="sew", padx=4, pady=4)
 
-        btn_cancel = tk.Button(frame_buttons, text="Update Now", command=parent.cmd_cancel)
+        btn_cancel = tk.Button(frame_buttons, text="Save and Update", command=parent.cmd_cancel)
         btn_cancel.grid(row=0, column=0, sticky="sew", padx=4, pady=4)
 
         self.columnconfigure(0, weight=1)
@@ -184,10 +190,10 @@ class MultiColumnListbox(tk.Frame):
     def modSelection(self, selectionNos):
         select_these_items = [
             child for child in self.tree.get_children('')
-            if int(self.tree.set(child, "Number")) in selectionNos
+            if int(self.tree.set(child, "ID")) in selectionNos
         ]
         self.tree.selection_set(select_these_items)
         # self.tree.selection_set()
 
     def getSelections(self):
-        return [int(self.tree.set(child, "Number")) for child in self.tree.selection()]
+        return [int(self.tree.set(child, "ID")) for child in self.tree.selection()]

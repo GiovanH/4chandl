@@ -242,10 +242,20 @@ def selectImages(board, preSelectedThreads):
             print("404: {}".format(thread.get("semantic_url")))
 
     # Window
-    SW = gui.SelectorWindow(board, threads, selectedSet)
+    headers = [
+        ("no", "ID",),
+        ("name", "Author",),
+        ("sub", "Subject",),
+        ("com", "Comment",),
+        # ("time", "Time",),
+        ("semantic_url", "URL",),
+    ]
+    tablerows = [[str(thread.get(h[0])) for h in headers] for thread in sorted(threads, key=lambda t: -t.get("no"))]
+
+    SW = gui.SelectorWindow(board, [h[1] for h in headers], tablerows, selectedSet)
 
     # Break out of a higher loop
-    if SW.cancel:
+    if SW.RESULT == gui.Result.CANCEL:
         raise KeyboardInterrupt("Canceled")
 
     # Indices to thread objects
