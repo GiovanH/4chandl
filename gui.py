@@ -1,6 +1,6 @@
 import tkinter as tk
 from tkinter import ttk
-import tkinter.font as tkFont
+import tkit
 
 import enum
 
