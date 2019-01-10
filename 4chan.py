@@ -31,8 +31,8 @@ def exec_with_timeout(secs, func, *args, **kwargs):
 # Filesystem IO
 
 def loadBoards():
-    filename = "Boards" 
-    example = {"4chan": ["wsg", "biz", "gd"]} 
+    filename = "Boards"
+    example = {"4chan": ["wsg", "biz", "gd"]}
     try:
         boards = ju.json_load(filename)
         return boards
@@ -141,35 +141,35 @@ def saveThreads(board, queue):
 
 
 def saveImageLog(threadJson, board, sem, verbose=False):
-    skips = 0   
+    skips = 0
     threadPosts = threadJson.get("posts")
     totalSize = sum([post.get("fsize") for post in threadPosts if post.get("fsize")])
-    widgets = [ 
-        sem,  
-        ' ', progressbar.Percentage(), 
-        ' ', progressbar.Bar(), 
-        ' ', progressbar.FileTransferSpeed(), 
-        ' ', progressbar.Timer(), 
-        ' ', progressbar.AdaptiveETA(), 
-    ] 
-    pbar = progressbar.ProgressBar(max_value=totalSize, widgets=widgets, redirect_stdout=True) 
-    i = 0 
-    for post in threadPosts: 
-        if post.get("ext"): 
-            fsize = post.get("fsize") 
-            try: 
-                pbar.update(fsize) 
-                downloadChanImage(board, sem, post) 
-                i += fsize 
-                pbar.update(i) 
-            except FileExistsError: 
-                # print("[BAR] Reducing max value {} by {}".format(pbar.max_value, fsize)) 
-                pbar.max_value -= fsize 
-                pbar.update(i) 
-                skips += 1 
-    pbar.finish() 
-    if (skips > 0) and verbose: 
-        print("Skipped {:>3} existing images. ".format(skips)) 
+    widgets = [
+        sem,
+        ' ', progressbar.Percentage(),
+        ' ', progressbar.Bar(),
+        ' ', progressbar.FileTransferSpeed(),
+        ' ', progressbar.Timer(),
+        ' ', progressbar.AdaptiveETA(),
+    ]
+    pbar = progressbar.ProgressBar(max_value=totalSize, widgets=widgets, redirect_stdout=True)
+    i = 0
+    for post in threadPosts:
+        if post.get("ext"):
+            fsize = post.get("fsize")
+            try:
+                pbar.update(fsize)
+                downloadChanImage(board, sem, post)
+                i += fsize
+                pbar.update(i)
+            except FileExistsError:
+                # print("[BAR] Reducing max value {} by {}".format(pbar.max_value, fsize))
+                pbar.max_value -= fsize
+                pbar.update(i)
+                skips += 1
+    pbar.finish()
+    if (skips > 0) and verbose:
+        print("Skipped {:>3} existing images. ".format(skips))
 
 
 def saveMessageLog(threadno, sem, threadJson, board):
@@ -213,7 +213,7 @@ def downloadFile(src, dstdir, dstfile, debug=None, max_retries=5, verbose=False)
             exec_with_timeout((5 + 3 * retries), urlretrieve, src, dstpath)
             if verbose:
                 print("{} --> {}".format(src, dstpath))
-            return
+            return dstpath
         except (HTTPError, URLError, ConnectionResetError) as e:
             print("{} -x> {}".format(src, dstpath))
             if verbose:

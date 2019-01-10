@@ -25,7 +25,7 @@ def renameDir(src, newName):
 
 
 def main():
-    srcdir = "saved/*"# input("Read folders in what directory? (glob) ")
+    srcdir = "saved/*"  # input("Read folders in what directory? (glob) ")
     inter = srcdir.replace("/", sep) + "{s}*{s}".format(s=sep)
     print(inter)
     globbed = glob(inter)
