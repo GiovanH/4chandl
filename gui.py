@@ -8,24 +8,26 @@ import enum
 class Result(enum.Enum):
     RUNNING = enum.auto()
     NEXT = enum.auto()
-    DONE = enum.auto()
-    CANCEL = enum.auto()
+    ABORT = enum.auto()
+    END = enum.auto()
 
 
 class SelectorWindow(tk.Tk):
-    def __init__(self, boardname, headers, tablerows, selectionNos, *args, **kwargs):
+    def __init__(self, title, headers, tablerows, selectionNos, saveCallback, *args, **kwargs):
         super(SelectorWindow, self).__init__(*args, **kwargs)
 
-        self.cancel = False
         self.selections = None
+        self.initial_selections = selectionNos
         self.RESULT = Result.RUNNING
 
-        self.protocol("WM_DELETE_WINDOW", self.cmd_cancel)
-        self.bind("<Escape>", self.cmd_done)
+        self.saveCallback = saveCallback
+
+        self.protocol("WM_DELETE_WINDOW", self.end(Result.ABORT))
+        self.bind("<Escape>", self.end(Result.ABORT))
 
         self.SelectorFrame = SelectorFrame(
             self, 
-            "/{}/ threads".format(boardname), 
+            title, 
             headers, 
             tablerows, 
             selectionNos
@@ -38,15 +40,19 @@ class SelectorWindow(tk.Tk):
 
         self.mainloop()
 
-    def cmd_cancel(self, event=None):
-        self.cancel = True
-        self.RESULT = Result.CANCEL
-        self.destroy()
+    def end(self, result, save=False):
+        def _end(event=None):
+            if save:
+                self.saveSelections()
+            self.RESULT = result
+            self.destroy()
+        return _end
 
-    def cmd_done(self, event=None):
-        self.selections = self.SelectorFrame.getSelections()
-        self.RESULT = Result.DONE
-        self.destroy()
+    def resetSelections(self, event=None):
+        self.SelectorFrame.listbox_threads.modSelection(self.initial_selections)
+
+    def saveSelections(self, event=None):
+        self.saveCallback(self.SelectorFrame.getSelections())
 
 
 class SelectorFrame(tk.Frame):
@@ -73,12 +79,32 @@ class SelectorFrame(tk.Frame):
         # Space buttons evenly
         frame_buttons.grid_columnconfigure(0, weight=1)
         frame_buttons.grid_columnconfigure(1, weight=1)
+        frame_buttons.grid_columnconfigure(2, weight=1)
 
-        btn_done = ttk.Button(frame_buttons, text="Save and Continue", command=parent.cmd_done)
-        btn_done.grid(row=0, column=1, sticky="sew", padx=4, pady=4)
-
-        btn_cancel = ttk.Button(frame_buttons, text="Save and Update", command=parent.cmd_cancel)
-        btn_cancel.grid(row=0, column=0, sticky="sew", padx=4, pady=4)
+        ttk.Button(
+            frame_buttons,
+            text="Save and Update Now", command=parent.end(Result.END, save=True)).grid(
+            row=0, column=0, sticky="sew", padx=4, pady=4)
+        ttk.Button(
+            frame_buttons,
+            text="Update Now", command=parent.end(Result.END)).grid(
+            row=1, column=0, sticky="sew", padx=4, pady=4)
+        ttk.Button(
+            frame_buttons,
+            text="Save", command=parent.saveSelections).grid(
+            row=0, column=1, sticky="sew", padx=4, pady=4)
+        ttk.Button(
+            frame_buttons, 
+            text="Reset", command=parent.resetSelections).grid(
+            row=1, column=1, sticky="sew", padx=4, pady=4)
+        ttk.Button(
+            frame_buttons,
+            text="Save and Continue", command=parent.end(Result.NEXT, save=True)).grid(
+            row=0, column=2, sticky="sew", padx=4, pady=4)
+        ttk.Button(
+            frame_buttons,
+            text="Continue without Saving", command=parent.end(Result.NEXT, save=False)).grid(
+            row=1, column=2, sticky="sew", padx=4, pady=4)
 
         self.columnconfigure(0, weight=1)
         self.rowconfigure(1, weight=1)

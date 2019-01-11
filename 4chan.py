@@ -231,8 +231,8 @@ def downloadFile(src, dstdir, dstfile, debug=None, max_retries=5, verbose=False)
 # Main logic
 
 
-def selectImages(board, preSelectedThreads):
-    selectedSet = set([thread.get("no") for thread in preSelectedThreads])
+def selectImages(board, preSelectedThreads, saveCallback):
+    preSelectionSet = set([thread.get("no") for thread in preSelectedThreads])
     threads = list(getThreads(board))
 
     # Find 404'd threads
@@ -250,17 +250,52 @@ def selectImages(board, preSelectedThreads):
         # ("time", "Time",),
         ("semantic_url", "URL",),
     ]
-    tablerows = [[str(thread.get(h[0])) for h in headers] for thread in sorted(threads, key=lambda t: -t.get("no"))]
 
-    SW = gui.SelectorWindow(board, [h[1] for h in headers], tablerows, selectedSet)
+    def xstr(s, n=""):
+        if s:
+            return str(s)
+        return n
+
+    tablerows = [
+        {
+            'values':
+            [
+                xstr(thread.get(h[0])) for h in headers
+            ]
+        }
+        for thread in sorted(threads, key=lambda t: -t.get("no"))
+    ]
+
+    selection = list(preSelectionSet)
+
+    def subSaveCallback(selectionIdxs):
+        nonlocal selection
+        selection = [
+            thread
+            for thread in threads
+            if thread.get("no")
+            in selectionIdxs
+        ]
+        saveCallback(selection)
+
+    SW = gui.SelectorWindow(
+        "/{}/ threads".format(board),
+        [h[1] for h in headers],
+        tablerows,
+        preSelectionSet,
+        subSaveCallback
+    )
 
     # Break out of a higher loop
-    if SW.RESULT == gui.Result.CANCEL:
+    if SW.RESULT == gui.Result.END:
         raise KeyboardInterrupt("Canceled")
 
+    if SW.RESULT == gui.Result.ABORT:
+        from os import abort
+        abort()
+
     # Indices to thread objects
-    selection = [thread for thread in threads if thread.get("no") in SW.selections]
-    
+     
     # print("selections: {}".format(SW.selections))
     return selection
 
@@ -278,12 +313,18 @@ def main():
         for board in boards:
             oldSelection = (downloadQueue.get(board) or [])
             downloadQueue[board] = oldSelection  # Fallback
-            selection = selectImages(board, oldSelection)
-            downloadQueue[board] = selection
-            ju.json_save(downloadQueue, "downloadQueue")
+            
+            def saveCallback(selection):
+                downloadQueue[board] = selection
+                ju.json_save(downloadQueue, "downloadQueue")
+                print("Saved to file")
+
+            selectImages(board, oldSelection, saveCallback)
+            
     except KeyboardInterrupt:
         print("Selections canceled, jumping straight to downloading threads. ")
         ju.json_save(downloadQueue, "downloadQueue")
+        print("Saved to file")
 
     # Run downloads
     for board in list(downloadQueue.keys()):
