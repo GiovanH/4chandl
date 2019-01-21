@@ -36,7 +36,7 @@ class SelectorWindow(tk.Tk):
 
         self.columnconfigure(0, weight=1)
         self.rowconfigure(0, weight=1)
-        self.geometry("600x800")
+        self.geometry("950x800")
 
         self.mainloop()
 
@@ -69,7 +69,7 @@ class SelectorFrame(tk.Frame):
         lab_title = lab_title = tk.Label(self, text=title, font=("Helvetica", 24))
         lab_title.grid(row=0, column=0, sticky="we")
 
-        listbox_threads = tkit.MultiColumnListbox(self, headers, items, multiselect=True, hscroll=True)
+        listbox_threads = tkit.MultiColumnListbox(self, headers, items, multiselect=True, hscroll=True, nonestr="")
         listbox_threads.grid(row=1, column=0, sticky="nsew", padx=(4, 18))
 
         # Buttons, in a frame

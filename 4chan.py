@@ -7,12 +7,12 @@ import requests
 from urllib.request import urlretrieve
 from urllib.error import HTTPError, URLError
 from os import makedirs, path
-from traceback import print_exc
+from traceback import print_exc, format_exc
 from json.decoder import JSONDecodeError
 import timeout_decorator
 import progressbar
-
-import html.parser
+from time import time, sleep
+from snip import slow
 
 # Making this extensible to boards like 8chan:
 # 1. Make a API mappings file
@@ -45,16 +45,16 @@ def loadBoards():
 # Parsing
 
 
-class HTMLTextExtractor(html.parser.HTMLParser):
-    def __init__(self):
-        super(HTMLTextExtractor, self).__init__()
-        self.result = []
+# class HTMLTextExtractor(html.parser.HTMLParser):
+#     def __init__(self):
+#         super(HTMLTextExtractor, self).__init__()
+#         self.result = []
 
-    def handle_data(self, d):
-        self.result.append(d)
+#     def handle_data(self, d):
+#         self.result.append(d)
 
-    def get_text(self):
-        return ''.join(self.result)
+#     def get_text(self):
+#         return ''.join(self.result)
 
 
 def trimObj(obj, interest):
@@ -82,10 +82,10 @@ def trimThread(thread):
     return trimObj(thread, interest)
 
 
-def html_to_text(html):
-    s = HTMLTextExtractor()
-    s.feed(html)
-    return s.get_text()
+# def html_to_text(html):
+#     s = HTMLTextExtractor()
+#     s.feed(html)
+#     return s.get_text()
 
 
 def formatPost(post):
@@ -138,36 +138,26 @@ def saveThreads(board, queue):
             print("Error with thread [{}] {}".format(threadno, threadurl))
             print_exc(limit=1)
             ju.json_save(thread, "error_thread_{}".format(threadno))
+            ju.json_save(format_exc(), "error_thread_{}f".format(threadno))
+            
+        except ConnectionError as e:
+            print("Error with thread [{}] {}".format(threadno, threadurl))
+            print_exc(limit=1)
+            ju.json_save(format_exc(), "error_thread_{}".format(threadno))
 
 
 def saveImageLog(threadJson, board, sem, verbose=False):
     skips = 0
     threadPosts = threadJson.get("posts")
-    totalSize = sum([post.get("fsize") for post in threadPosts if post.get("fsize")])
-    widgets = [
-        sem,
-        ' ', progressbar.Percentage(),
-        ' ', progressbar.Bar(),
-        ' ', progressbar.FileTransferSpeed(),
-        ' ', progressbar.Timer(),
-        ' ', progressbar.AdaptiveETA(),
-    ]
-    pbar = progressbar.ProgressBar(max_value=totalSize, widgets=widgets, redirect_stdout=True)
-    i = 0
+    realPosts = []    
     for post in threadPosts:
         if post.get("ext"):
-            fsize = post.get("fsize")
             try:
-                pbar.update(fsize)
-                downloadChanImage(board, sem, post)
-                i += fsize
-                pbar.update(i)
+                if downloadChanImage(board, sem, post, check=True):
+                    realPosts.append(post)
             except FileExistsError:
-                # print("[BAR] Reducing max value {} by {}".format(pbar.max_value, fsize))
-                pbar.max_value -= fsize
-                pbar.update(i)
                 skips += 1
-    pbar.finish()
+    downloadChanImages(board, sem, realPosts)
     if (skips > 0) and verbose:
         print("Skipped {:>3} existing images. ".format(skips))
 
@@ -186,17 +176,41 @@ def saveMessageLog(threadno, sem, threadJson, board):
 
     makedirs(msgBase, exist_ok=True)
     with open(filePath, "w", encoding="utf-8") as textfile:
-        print("------> {}".format(filePath))
+        # print("------> {}".format(filePath))
         for post in threadJson.get("posts"):
             textfile.write(formatPost(post))
 
 
-def downloadChanImage(board, sem, post):
+def downloadChanImages(board, sem, posts):
+    i = 0
+    totalSize = sum([post.get("fsize") for post in posts if post.get("fsize")])
+    widgets = [
+        sem,
+        ' ', progressbar.Percentage(),
+        ' ', progressbar.Bar(),
+        ' ', progressbar.FileTransferSpeed(),
+        ' ', progressbar.Timer(),
+        ' ', progressbar.AdaptiveETA(),
+    ]
+    pbar = progressbar.ProgressBar(max_value=totalSize, widgets=widgets, redirect_stdout=True)
+    for post in slow(posts, 1):
+        fsize = post.get("fsize")
+        downloadChanImage(board, sem, post)
+        i += fsize
+        pbar.update(i)
+
+    pbar.finish()
+
+
+def downloadChanImage(board, sem, post, check=False):
     dstdir = "./saved/{}/{}/".format(board, sem)
     dstfile = "{}{}".format(post.get("tim"), post.get("ext"))
 
     if (path.exists("{}{}".format(dstdir, dstfile))):
         raise FileExistsError(dstfile)
+
+    if check:
+        return True
 
     src = "https://i.4cdn.org/{}/{}{}".format(
         board, post.get("tim"), post.get("ext"))
@@ -251,16 +265,11 @@ def selectImages(board, preSelectedThreads, saveCallback):
         ("semantic_url", "URL",),
     ]
 
-    def xstr(s, n=""):
-        if s:
-            return str(s)
-        return n
-
     tablerows = [
         {
             'values':
             [
-                xstr(thread.get(h[0])) for h in headers
+                str(thread.get(h[0])) for h in headers
             ]
         }
         for thread in sorted(threads, key=lambda t: -t.get("no"))

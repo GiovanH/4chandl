@@ -1,64 +1,90 @@
 #!/bin/python3
 from distutils.dir_util import copy_tree
 from glob import glob
-from os.path import sep, getmtime
+from os.path import *
 from send2trash import send2trash
-from time import sleep
-from traceback import print_exc
+# from time import sleep
+# from traceback import print_exc
+import datetime
 import loom
 
 
-def renameDir(src, newName):
-    dst = "{path}{s}{newName}{s}".format(path=sep.join(src.split(sep)[:-2]), newName=newName, s=sep)
-    jobstr = "{} -> {}".format(src, dst)
-    if dst.lower() == src.lower():
-        print("Same.")
+def renameDir(src, dst):
+    # jobstr = "{} -> {}".format(src, dst)
+    if abspath(dst.lower()) == abspath(src.lower()):
+        # print("Same folder.")
         return
     try:
-        print(jobstr)
         copy_tree(src, dst)
         send2trash(src)
+        # print(jobstr)
         return
     except Exception as e:
         print(e)
         raise
 
 
-def main():
-    srcdir = "saved/*"  # input("Read folders in what directory? (glob) ")
-    inter = srcdir.replace("/", sep) + "{s}*{s}".format(s=sep)
-    print(inter)
-    globbed = glob(inter)
-    globbed = sorted(globbed, key=getmtime)
-    print(globbed)
-    for path in globbed:
-        print(path)
-        ans = input("?> ")
-        try:
-            if ans == "":
-                continue
-            try:
-                loom.thread(name=ans, target=renameDir, args=(path, ans, ))
-                # renameDir(path, ans)
-                sleep(0.1)
-            except Exception as e:
-                print("Error: unable to start thread")
-                raise
-        except ValueError:
-            print("Invalid input. ")  # Have another go.
+sortmethods = {
+    "modtime": lambda g: sorted(g, key=getmtime),
+    "length": lambda g: sorted(g, key=len),
+    "filecount": lambda g: sorted(g, key=lambda x: len(glob(x))),
+    "alpha": lambda g: sorted(g)
+}
 
-# threading.Thread(name=ans, target=renameDir, args=(path, ans, )).start()
-def run_threaded():
+
+def main():
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("-s", "--srcglob", default="./saved/*/*/",
+                    help="From where to pull folders. Default is `./saved/*/*/` ")
+    ap.add_argument("-d", "--destfldr", default=None,
+                    help="Root directory for new folders")
+    ap.add_argument("--sort", default="modtime",
+                    help="Method to sort directories")
+    args = ap.parse_args()
+
+    srcdir = args.srcglob  # abspath(args.srcglob)  # .replace("/", sep)
+    destfldr = abspath(args.destfldr) if args.destfldr else None
+
+    def getdestfldr():
+        if not destfldr:
+            return split(dirname(path))[0]
+        else:
+            return destfldr
+
+    print("Source:", srcdir)
+    globbed = glob(srcdir)
+    try:
+        globbed = sortmethods[args.sort](globbed)
+    except KeyError:
+        print("No such method as", args.sort)
+        print("Valid methods include", sortmethods.keys())
+    with loom.Spool(6) as spool:
+        for path in globbed:
+            print(datetime.datetime.fromtimestamp(getmtime(path)).strftime("%Y-%m-%d"), relpath(path))
+            try:
+                ans = input("New name? > ")
+            except EOFError as e:
+                ans = '\x04'
+            try:
+                if ans == "":
+                    continue
+                ans = abspath(ans)
+                ans = split(relpath(path))[1] if ans == '\x04' else ans  # ^D
+                newDir = join(getdestfldr(), ans)
+                print("{} -> {}".format(path, newDir))
+                spool.enqueue(name=ans, target=renameDir, args=(path, newDir,))
+            except ValueError:
+                print("Invalid input. ")
+        print("Finishing")
+
+
+def run():
     try:
         main()
-    except (Exception, KeyboardInterrupt) as e:
-        # Postmortem on uncaught exceptions
-        print_exc()
-
-    # Cleanup
-    loom.threadWait(1, 0.8)
-    print("Finished.")
+    except KeyboardInterrupt:
+        return
 
 
 if __name__ == "__main__":
-    run_threaded()
+    run()
