@@ -182,10 +182,13 @@ def saveMessageLog(threadno, sem, threadJson, board):
 
 
 def downloadChanImages(board, sem, posts):
+    if len(posts) == 0:
+        print("Nothing to do for thread {board}/{sem}".format(**vars()))
+        return
     i = 0
     totalSize = sum([post.get("fsize") for post in posts if post.get("fsize")])
     widgets = [
-        sem,
+        "{:30.30}".format(sem),
         ' ', progressbar.Percentage(),
         ' ', progressbar.Bar(),
         ' ', progressbar.FileTransferSpeed(),

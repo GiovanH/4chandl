@@ -46,13 +46,14 @@ def main():
     srcdir = args.srcglob  # abspath(args.srcglob)  # .replace("/", sep)
     destfldr = abspath(args.destfldr) if args.destfldr else None
 
-    def getdestfldr():
+    def getdestfldr(path):
         if not destfldr:
             return split(dirname(path))[0]
         else:
             return destfldr
 
     print("Source:", srcdir)
+    print("Dest:", getdestfldr("$src/"))
     globbed = glob(srcdir)
     try:
         globbed = sortmethods[args.sort](globbed)
@@ -71,7 +72,7 @@ def main():
                     continue
                 ans = abspath(ans)
                 ans = split(relpath(path))[1] if ans == '\x04' else ans  # ^D
-                newDir = join(getdestfldr(), ans)
+                newDir = join(getdestfldr(path), ans)
                 print("{} -> {}".format(path, newDir))
                 spool.enqueue(name=ans, target=renameDir, args=(path, newDir,))
             except ValueError:
