@@ -11,6 +11,7 @@ from traceback import print_exc, format_exc
 from json.decoder import JSONDecodeError
 import timeout_decorator
 import progressbar
+from os import stat
 from time import time, sleep
 from snip import slow
 
@@ -139,7 +140,7 @@ def saveThreads(board, queue):
             print_exc(limit=1)
             ju.json_save(thread, "error_thread_{}".format(threadno))
             ju.json_save(format_exc(), "error_thread_{}f".format(threadno))
-            
+
         except ConnectionError as e:
             print("Error with thread [{}] {}".format(threadno, threadurl))
             print_exc(limit=1)
@@ -149,14 +150,17 @@ def saveThreads(board, queue):
 def saveImageLog(threadJson, board, sem, verbose=False):
     skips = 0
     threadPosts = threadJson.get("posts")
-    realPosts = []    
+    realPosts = []
     for post in threadPosts:
         if post.get("ext"):
-            try:
-                if downloadChanImage(board, sem, post, check=True):
-                    realPosts.append(post)
-            except FileExistsError:
-                skips += 1
+
+            (dstdir, dstfile, dstpath) = getDestImagePath(board, sem, post)
+
+            if (path.exists(dstpath)):
+                if post.get("fsize") == stat(dstpath).st_size:
+                    skips += 1
+                    continue
+            realPosts.append(post)
     downloadChanImages(board, sem, realPosts)
     if (skips > 0) and verbose:
         print("Skipped {:>3} existing images. ".format(skips))
@@ -205,15 +209,16 @@ def downloadChanImages(board, sem, posts):
     pbar.finish()
 
 
-def downloadChanImage(board, sem, post, check=False):
+def getDestImagePath(board, sem, post):
     dstdir = "./saved/{}/{}/".format(board, sem)
     dstfile = "{}{}".format(post.get("tim"), post.get("ext"))
+    dstpath = path.join(dstdir, dstfile)
+    return (dstdir, dstfile, dstpath)
 
-    if (path.exists("{}{}".format(dstdir, dstfile))):
-        raise FileExistsError(dstfile)
 
-    if check:
-        return True
+def downloadChanImage(board, sem, post):
+
+    (dstdir, dstfile, dstpath) = getDestImagePath(board, sem, post)
 
     src = "https://i.4cdn.org/{}/{}{}".format(
         board, post.get("tim"), post.get("ext"))
@@ -307,14 +312,14 @@ def selectImages(board, preSelectedThreads, saveCallback):
         abort()
 
     # Indices to thread objects
-     
+
     # print("selections: {}".format(SW.selections))
     return selection
 
 
 def main():
     # Load
-    boards = loadBoards().get("4chan") 
+    boards = loadBoards().get("4chan")
     try:
         downloadQueue = ju.json_load("downloadQueue")
     except FileNotFoundError:
@@ -325,14 +330,14 @@ def main():
         for board in boards:
             oldSelection = (downloadQueue.get(board) or [])
             downloadQueue[board] = oldSelection  # Fallback
-            
+
             def saveCallback(selection):
                 downloadQueue[board] = selection
                 ju.json_save(downloadQueue, "downloadQueue")
                 print("Saved to file")
 
             selectImages(board, oldSelection, saveCallback)
-            
+
     except KeyboardInterrupt:
         print("Selections canceled, jumping straight to downloading threads. ")
         ju.json_save(downloadQueue, "downloadQueue")
