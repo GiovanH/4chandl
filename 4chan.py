@@ -12,7 +12,6 @@ from json.decoder import JSONDecodeError
 import timeout_decorator
 import progressbar
 from os import stat
-from time import time, sleep
 from snip import slow
 
 # Making this extensible to boards like 8chan:
@@ -26,12 +25,29 @@ from snip import slow
 
 
 def exec_with_timeout(secs, func, *args, **kwargs):
+    """Wrap a function in a timeout. 
+    If the function takes longer than `secs` to complete, an exception will be raised.
+    
+    Args:
+        secs (int): Max time until process completion
+        func
+        *args
+        **kwargs
+    
+    Returns:
+        None
+    """
     return timeout_decorator.timeout(secs, use_signals=False)(func)(*args)
 
 
 # Filesystem IO
 
 def loadBoards():
+    """Load information about board names from file, handling defaults if needed.
+    
+    Returns:
+        Dict: Key: server, Value: list of board acronyms
+    """
     filename = "Boards"
     example = {"4chan": ["wsg", "biz", "gd"]}
     try:
@@ -46,19 +62,16 @@ def loadBoards():
 # Parsing
 
 
-# class HTMLTextExtractor(html.parser.HTMLParser):
-#     def __init__(self):
-#         super(HTMLTextExtractor, self).__init__()
-#         self.result = []
-
-#     def handle_data(self, d):
-#         self.result.append(d)
-
-#     def get_text(self):
-#         return ''.join(self.result)
-
-
 def trimObj(obj, interest):
+    """Remove a set of keys from a dictionary
+    
+    Args:
+        obj (Dict): Description
+        interest (List): List of keys to remove
+    
+    Returns:
+        Dict: Filtered version of obj
+    """
     pops = []
     for key in obj.keys():
         if key not in interest:
@@ -69,6 +82,14 @@ def trimObj(obj, interest):
 
 
 def trimThread(thread):
+    """Removes unneeded metadata from thread JSON
+    
+    Args:
+        thread (dict): Thread json object
+    
+    Returns:
+        Dict: Trimmed thread json
+    """
     interest = [
         "no",
         "name",
@@ -83,13 +104,15 @@ def trimThread(thread):
     return trimObj(thread, interest)
 
 
-# def html_to_text(html):
-#     s = HTMLTextExtractor()
-#     s.feed(html)
-#     return s.get_text()
-
-
 def formatPost(post):
+    """Converts a post json to an HTML fragment
+    
+    Args:
+        post (Dict): Post json object
+    
+    Returns:
+        str: HTML representation of post
+    """
     subfields = ["sub", "name", "now", "no"]
     subline = " ".join([str(post.get(field))
                         for field in subfields if post.get(field) is not None])
@@ -106,6 +129,14 @@ def formatPost(post):
 
 
 def getThreads(board):
+    """Generates trimmed versions of all threads in a board.
+    
+    Args:
+        board (str): Board acronym
+    
+    Yields:
+        Dict: Thread json object
+    """
     try:
         catalog = requests.get("https://a.4cdn.org/{}/{}.json".format(board, "catalog"))
         if not catalog.ok:
@@ -122,6 +153,12 @@ def getThreads(board):
 
 
 def saveThreads(board, queue):
+    """Process saving of threads in a board. Saves messages and html.
+    
+    Args:
+        board (str): Board acronym
+        queue (List): List of thread json objects
+    """
     for thread in queue:
 
         threadno = thread.get("no")
@@ -148,6 +185,14 @@ def saveThreads(board, queue):
 
 
 def saveImageLog(threadJson, board, sem, verbose=False):
+    """Saves all images in a thread, skipping up-to-date images.
+    
+    Args:
+        threadJson 
+        board (str): Board acronym
+        sem (str): Thread semantic url (text id)
+        verbose (bool, optional): Print verbose output
+    """
     skips = 0
     threadPosts = threadJson.get("posts")
     realPosts = []
@@ -167,6 +212,17 @@ def saveImageLog(threadJson, board, sem, verbose=False):
 
 
 def saveMessageLog(threadno, sem, threadJson, board):
+    """Save text messages to html
+    
+    Args:
+        threadno (int): Thread numerical id
+        sem (str): Thread semantic url (text id)
+        threadJson
+        board (str): Board acronym
+    
+    Returns:
+        TYPE: Description
+    """
     msgBase = "./saved/text/{}/".format(board)
     filePath = "{}{s}_{n}.htm".format(msgBase, s=sem, n=threadno)
 
@@ -186,6 +242,16 @@ def saveMessageLog(threadno, sem, threadJson, board):
 
 
 def downloadChanImages(board, sem, posts):
+    """Downloads images.
+    
+    Args:
+        board (str): Board acronym
+        sem (str): Semmantic url (text id)
+        posts (list): List of json posts
+    
+    Returns:
+        Returns early if posts is empty.
+    """
     if len(posts) == 0:
         print("Nothing to do for thread {board}/{sem}".format(**vars()))
         return
@@ -202,7 +268,11 @@ def downloadChanImages(board, sem, posts):
     pbar = progressbar.ProgressBar(max_value=totalSize, widgets=widgets, redirect_stdout=True)
     for post in slow(posts, 1):
         fsize = post.get("fsize")
-        downloadChanImage(board, sem, post)
+        (dstdir, dstfile, dstpath) = getDestImagePath(board, sem, post)
+
+        src = "https://i.4cdn.org/{}/{}{}".format(
+            board, post.get("tim"), post.get("ext"))
+        downloadFile(src, dstdir, dstfile, debug=post)
         i += fsize
         pbar.update(i)
 
@@ -210,22 +280,30 @@ def downloadChanImages(board, sem, posts):
 
 
 def getDestImagePath(board, sem, post):
+    """Generates paths for saving images
+
+    Returns:
+        Tuple (directory, file, path)
+    """
     dstdir = "./saved/{}/{}/".format(board, sem)
     dstfile = "{}{}".format(post.get("tim"), post.get("ext"))
     dstpath = path.join(dstdir, dstfile)
     return (dstdir, dstfile, dstpath)
 
 
-def downloadChanImage(board, sem, post):
-
-    (dstdir, dstfile, dstpath) = getDestImagePath(board, sem, post)
-
-    src = "https://i.4cdn.org/{}/{}{}".format(
-        board, post.get("tim"), post.get("ext"))
-    downloadFile(src, dstdir, dstfile, debug=post)
-
-
 def downloadFile(src, dstdir, dstfile, debug=None, max_retries=5, verbose=False):
+    """Download a file from a URL to a destination, with a filename.
+    
+    Args:
+        src (str): URL of source
+        dstdir (str): Directory of desination, i.e. C:/Users/Guest/
+        dstfile (str): Name of file, i.e. image.jpg
+        max_retries (int, optional): Maximum number of times to retry
+        verbose (bool, optional): Print additional output
+    
+    Returns:
+        TYPE: Description
+    """
     dstpath = "{}{}".format(dstdir, dstfile)
     makedirs(dstdir, exist_ok=True)
     retries = 0
@@ -242,7 +320,6 @@ def downloadFile(src, dstdir, dstfile, debug=None, max_retries=5, verbose=False)
                 print_exc(limit=5)
             else:
                 print_exc(limit=2)
-            ju.json_save(debug, "error_download_{}".format(dstfile))
         except timeout_decorator.TimeoutError as e:
             if verbose:
                 print("{} -x> {} [Timeout]".format(src, dstpath))
@@ -254,6 +331,16 @@ def downloadFile(src, dstdir, dstfile, debug=None, max_retries=5, verbose=False)
 
 
 def selectImages(board, preSelectedThreads, saveCallback):
+    """Prompt user to select threads to queue
+    
+    Args:
+        board (str): Board acronym
+        preSelectedThreads (list): List of thread numbers that were previously selected
+        saveCallback (function): Function to save progress to file
+    
+    Raises:
+        KeyboardInterrupt: User canceled process from window
+    """
     preSelectionSet = set([thread.get("no") for thread in preSelectedThreads])
     threads = list(getThreads(board))
 
@@ -283,10 +370,12 @@ def selectImages(board, preSelectedThreads, saveCallback):
         for thread in sorted(threads, key=lambda t: -t.get("no"))
     ]
 
-    selection = list(preSelectionSet)
-
     def subSaveCallback(selectionIdxs):
-        nonlocal selection
+        """Summary
+        
+        Args:
+            selectionIdxs (TYPE): Description
+        """
         selection = [
             thread
             for thread in threads
@@ -311,13 +400,11 @@ def selectImages(board, preSelectedThreads, saveCallback):
         from os import abort
         abort()
 
-    # Indices to thread objects
-
-    # print("selections: {}".format(SW.selections))
-    return selection
+    return
 
 
 def main():
+
     # Load
     boards = loadBoards().get("4chan")
     try:
@@ -332,6 +419,11 @@ def main():
             downloadQueue[board] = oldSelection  # Fallback
 
             def saveCallback(selection):
+                """Summary
+                
+                Args:
+                    selection (TYPE): Description
+                """
                 downloadQueue[board] = selection
                 ju.json_save(downloadQueue, "downloadQueue")
                 print("Saved to file")
