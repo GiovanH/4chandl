@@ -118,14 +118,15 @@ def formatPost(post):
     subline = " ".join([str(post.get(field))
                         for field in subfields if post.get(field) is not None])
     return "\
-    <div class='post'><span class='subline' id='p{no}'>>{subline} >>{no}</span>\n \
-    <span class='file'>File: {file}</span>\n \
-    {com}</div>".format(
+<div class='post'>\
+<span class='subline' id='p{no}'>>{subline} >>{no}</span>\n \
+<span class='file'>File: {file}</span>\n\
+{com}</div>".format(
         subline=subline,
         no=post.get("no"),
         file=(post.get("filename") + post.get("ext")
               if post.get("filename") else "None"),
-        com=(("\n<p>" + post.get("com") + "</p>") if post.get("com") else "")
+        com=(("\n<p class='comment'>" + post.get("com") + "</p>") if post.get("com") else "")
     )
 
 
@@ -154,12 +155,25 @@ def getThreads(board):
 
 
 def saveThreads(board, queue):
+    from simplejson.errors import JSONDecodeError
     """Process saving of threads in a board. Saves messages and html.
     
     Args:
         board (str): Board acronym
         queue (List): List of thread json objects
     """
+    # widgets = [
+    #     "{:5.5}".format(board),
+    #     ' ', progressbar.Percentage(),
+    #     ' ', progressbar.Bar(),
+    #     ' ', progressbar.SimpleProgress(),
+    #     ' ', progressbar.Timer(),
+    #     ' ', progressbar.AdaptiveETA(),
+    # ]
+    # for thread in progressbar.progressbar(queue, widgets=widgets, redirect_stdout=False):
+    # for thread in progressbar.progressbar(queue, widgets=widgets, redirect_stdout=True):
+    # for (enum, thread) in enumerate(queue):
+    #     print("{:5.5} {}/{}".format(board, enum, len(queue)))
     for thread in queue:
 
         threadno = thread.get("no")
@@ -224,8 +238,8 @@ def saveMessageLog(threadno, sem, threadJson, board):
     Returns:
         TYPE: Description
     """
-    msgBase = "./saved/text/{}/".format(board)
-    filePath = "{}{s}_{n}.htm".format(msgBase, s=sem, n=threadno)
+    msgBase = "./text/{}/".format(board)
+    filePath = "{}{s}_{n}".format(msgBase, s=sem, n=threadno)
 
     try:
         lastPostTime = threadJson.get("posts")[-1].get("time")
@@ -235,8 +249,12 @@ def saveMessageLog(threadno, sem, threadJson, board):
     except FileNotFoundError:
         pass
 
+    json.dump(threadJson, open(filePath + ".json", "w", encoding="utf-8"))
+
     makedirs(msgBase, exist_ok=True)
-    with open(filePath, "w", encoding="utf-8") as textfile:
+    with open(filePath + ".htm", "w", encoding="utf-8") as textfile:
+        textfile.write('<link rel="stylesheet" type="text/css" href="4chan.css" />\n')
+        textfile.write('<link rel="stylesheet" type="text/css" href="../4chan.css" />\n')
         # print("------> {}".format(filePath))
         for post in threadJson.get("posts"):
             textfile.write(formatPost(post))
@@ -253,9 +271,9 @@ def downloadChanImages(board, sem, posts):
     Returns:
         Returns early if posts is empty.
     """
-    if len(posts) == 0:
-        print("Nothing to do for thread {board}/{sem}".format(**vars()))
-        return
+    # if len(posts) == 0:
+    #     print("Nothing to do for thread {board}/{sem}".format(**vars()))
+    #     return
     i = 0
     totalSize = sum([post.get("fsize") for post in posts if post.get("fsize")])
     widgets = [
