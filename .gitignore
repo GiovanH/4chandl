@@ -1,6 +1,8 @@
 # 4chan specific
 jobj/
 saved/
+temp/
+text/
 
 
 # Byte-compiled / optimized / DLL files
