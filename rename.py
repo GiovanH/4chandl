@@ -82,6 +82,9 @@ def main():
             try:
                 if ans == "":
                     continue
+                if ans == '\x18':
+                    spool.finish(verbose=True, use_pbar=True)
+                    return 0
                 # ans = abspath(ans)
                 ans = split(relpath(path))[1] if ans == '\x04' else ans  # ^D
                 newDir = join(getdestfldr(path), ans)
@@ -91,9 +94,9 @@ def main():
             except ValueError:
                 print("Invalid input. ")
         print("Finishing")
-        spool.finish(verbose=True)
+        spool.finish(verbose=True, use_pbar=True)
         assert len(spool.queue) == 0, "spool did not finish"
-
+        return 0
 
 if __name__ == "__main__":
     main()
