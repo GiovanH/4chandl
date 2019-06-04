@@ -1,6 +1,6 @@
 #!/bin/python3
 
-import jfileutil as ju
+from snip import jfileutil as ju
 import gui
 
 import requests
@@ -13,7 +13,7 @@ import timeout_decorator
 import progressbar
 from os import stat
 import json
-from snip import slow
+from snip.flow import slow
 
 # Making this extensible to boards like 8chan:
 # 1. Make a API mappings file

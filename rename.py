@@ -6,7 +6,7 @@ from send2trash import send2trash
 # from time import sleep
 # from traceback import print_exc
 import datetime
-import loom
+from snip import loom
 
 
 def renameDir(src, dst):

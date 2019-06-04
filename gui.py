@@ -1,6 +1,6 @@
 import tkinter as tk
 from tkinter import ttk
-import tkit
+from snip import tkit
 
 import enum
 
