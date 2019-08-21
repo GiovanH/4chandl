@@ -1,19 +1,26 @@
 #!/bin/python3
 
-from snip import jfileutil as ju
 import gui
 
-import requests
-from urllib.request import urlretrieve
-from urllib.error import HTTPError, URLError
-from os import makedirs, path
-from traceback import print_exc, format_exc
-from json.decoder import JSONDecodeError
-import timeout_decorator
-import progressbar
-from os import stat
+from snip import jfileutil as ju
+
 import json
+import os
+import tqdm
+import requests
+import snip.net
+import timeout_decorator
+
+from json.decoder import JSONDecodeError
+from os import stat
 from snip.flow import slow
+from snip.flow import slowfunc
+from traceback import format_exc
+from traceback import print_exc
+from urllib.error import HTTPError
+from urllib.error import URLError
+from urllib.request import urlretrieve
+
 
 # Making this extensible to boards like 8chan:
 # 1. Make a API mappings file
@@ -144,7 +151,7 @@ def getThreads(board):
         if not catalog.ok:
             catalog.raise_for_status()
         catalog = catalog.json()
-    except JSONDecodeError as e:
+    except JSONDecodeError:
         print(catalog)
         raise
     for page in catalog:
@@ -187,13 +194,13 @@ def saveThreads(board, queue):
             saveMessageLog(threadno, sem, threadJson, board)
             saveImageLog(threadJson, board, sem)
 
-        except JSONDecodeError as e:
+        except JSONDecodeError:
             print("Error with thread [{}] {}".format(threadno, threadurl))
             print_exc(limit=1)
             ju.json_save(thread, "error_thread_{}".format(threadno))
             ju.json_save(format_exc(), "error_thread_{}f".format(threadno))
 
-        except ConnectionError as e:
+        except ConnectionError:
             print("Error with thread [{}] {}".format(threadno, threadurl))
             print_exc(limit=1)
             ju.json_save(format_exc(), "error_thread_{}".format(threadno))
@@ -216,7 +223,7 @@ def saveImageLog(threadJson, board, sem, verbose=False):
 
             (dstdir, dstfile, dstpath) = getDestImagePath(board, sem, post)
 
-            if (path.exists(dstpath)):
+            if (os.path.exists(dstpath)):
                 if post.get("fsize") == stat(dstpath).st_size:
                     skips += 1
                     continue
@@ -243,7 +250,7 @@ def saveMessageLog(threadno, sem, threadJson, board):
 
     try:
         lastPostTime = threadJson.get("posts")[-1].get("time")
-        fileUpdateTime = path.getmtime(filePath)
+        fileUpdateTime = os.path.getmtime(filePath)
         if fileUpdateTime > lastPostTime:
             return
     except FileNotFoundError:
@@ -251,7 +258,7 @@ def saveMessageLog(threadno, sem, threadJson, board):
 
     json.dump(threadJson, open(filePath + ".json", "w", encoding="utf-8"))
 
-    makedirs(msgBase, exist_ok=True)
+    os.makedirs(msgBase, exist_ok=True)
     with open(filePath + ".htm", "w", encoding="utf-8") as textfile:
         textfile.write('<link rel="stylesheet" type="text/css" href="4chan.css" />\n')
         textfile.write('<link rel="stylesheet" type="text/css" href="../4chan.css" />\n')
@@ -306,7 +313,7 @@ def getDestImagePath(board, sem, post):
     """
     dstdir = "./saved/{}/{}/".format(board, sem)
     dstfile = "{}{}".format(post.get("tim"), post.get("ext"))
-    dstpath = path.join(dstdir, dstfile)
+    dstpath = os.path.join(dstdir, dstfile)
     return (dstdir, dstfile, dstpath)
 
 
@@ -324,7 +331,7 @@ def downloadFile(src, dstdir, dstfile, debug=None, max_retries=5, verbose=False)
         TYPE: Description
     """
     dstpath = "{}{}".format(dstdir, dstfile)
-    makedirs(dstdir, exist_ok=True)
+    os.makedirs(dstdir, exist_ok=True)
     retries = 0
 
     while (retries < max_retries):
@@ -333,13 +340,13 @@ def downloadFile(src, dstdir, dstfile, debug=None, max_retries=5, verbose=False)
             if verbose:
                 print("{} --> {}".format(src, dstpath))
             return dstpath
-        except (HTTPError, URLError, ConnectionResetError) as e:
+        except (HTTPError, URLError, ConnectionResetError):
             print("{} -x> {}".format(src, dstpath))
             if verbose:
                 print_exc(limit=5)
             else:
                 print_exc(limit=2)
-        except timeout_decorator.TimeoutError as e:
+        except timeout_decorator.TimeoutError:
             if verbose:
                 print("{} -x> {} [Timeout]".format(src, dstpath))
         retries += 1
