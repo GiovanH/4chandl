@@ -181,7 +181,7 @@ def saveThreads(board, queue):
     # for thread in progressbar.progressbar(queue, widgets=widgets, redirect_stdout=True):
     # for (enum, thread) in enumerate(queue):
     #     print("{:5.5} {}/{}".format(board, enum, len(queue)))
-    for thread in queue:
+    for thread in tqdm.tqdm(queue, unit="thread"):
 
         threadno = thread.get("no")
         threadurl = "https://a.4cdn.org/{}/thread/{}.json".format(board, threadno)
@@ -278,31 +278,20 @@ def downloadChanImages(board, sem, posts):
     Returns:
         Returns early if posts is empty.
     """
-    # if len(posts) == 0:
-    #     print("Nothing to do for thread {board}/{sem}".format(**vars()))
-    #     return
-    i = 0
+
     totalSize = sum([post.get("fsize") for post in posts if post.get("fsize")])
-    widgets = [
-        "{:30.30}".format(sem),
-        ' ', progressbar.Percentage(),
-        ' ', progressbar.Bar(),
-        ' ', progressbar.FileTransferSpeed(),
-        ' ', progressbar.Timer(),
-        ' ', progressbar.AdaptiveETA(),
-    ]
-    pbar = progressbar.ProgressBar(max_value=totalSize, widgets=widgets, redirect_stdout=True)
-    for post in slow(posts, 1):
+    post_generator = tqdm.tqdm(posts, desc=f"{board}/{sem}", total=totalSize, unit='B', unit_scale=True)
+    for post in post_generator:
         fsize = post.get("fsize")
         (dstdir, dstfile, dstpath) = getDestImagePath(board, sem, post)
 
-        src = "https://i.4cdn.org/{}/{}{}".format(
-            board, post.get("tim"), post.get("ext"))
-        downloadFile(src, dstdir, dstfile, debug=post)
-        i += fsize
-        pbar.update(i)
-
-    pbar.finish()
+        src = f"https://i.4cdn.org/{board}/{post.get('tim')}{post.get('ext')}"
+        
+        if not os.path.isfile(dstfile):
+            slowfunc(1, snip.net.saveStreamAs, (snip.net.getStream(src), dstfile,))
+            post_generator.update(fsize)
+        else:
+            post_generator.total -= fsize
 
 
 def getDestImagePath(board, sem, post):
