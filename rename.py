@@ -25,10 +25,10 @@ def renameDir(src, dst):
 
 
 sortmethods = {
-    "modtime": lambda g: sorted(g, key=getmtime),
-    "length": lambda g: sorted(g, key=len),
-    "filecount": lambda g: sorted(g, key=lambda x: len(glob(join(x, "*")))),
-    "alpha": lambda g: sorted(g)
+    "modtime": lambda g, r: sorted(g, key=getmtime, reverse=r),
+    "length": lambda g, r: sorted(g, key=len, reverse=r),
+    "filecount": lambda g, r: sorted(g, key=lambda x: len(glob(join(x, "*"))), reverse=r),
+    "alpha": lambda g, r: sorted(g, reverse=r)
 }
 
 
@@ -44,6 +44,8 @@ def main():
                     help="Method to sort directories")
     ap.add_argument("--mock", action="store_true",
                     help="Don't actually perform disk operations")
+    ap.add_argument("-r", "--reverse", action="store_true",
+                    help="Reverse sort")
     args = ap.parse_args()
 
     srcdir = args.srcglob  # abspath(args.srcglob)  # .replace("/", sep)
@@ -62,7 +64,7 @@ def main():
     print("Dest:", getdestfldr("$src/"))
     globbed = glob(srcdir)
     try:
-        globbed = sortmethods[args.sort](globbed)
+        globbed = sortmethods[args.sort](globbed, args.reverse)
         # print(globbed)
     except KeyError:
         print("No such method as", args.sort)
