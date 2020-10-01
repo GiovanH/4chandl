@@ -13,14 +13,13 @@ import timeout_decorator
 
 from json.decoder import JSONDecodeError
 from os import stat
-from snip.flow import slow
 from snip.flow import slowfunc
-from traceback import format_exc
-from traceback import print_exc
 from urllib.error import HTTPError
 from urllib.error import URLError
 from urllib.request import urlretrieve
 
+from snip.stream import TriadLogger
+logger = TriadLogger(__name__)
 
 # Making this extensible to boards like 8chan:
 # 1. Make a API mappings file
@@ -63,8 +62,8 @@ def loadBoards():
         return boards
     except FileNotFoundError:
         ju.json_save(example, filename)
-        print("Missing the boards file. A sample has been generated.")
-        print("Please edit the template file in the jobj folder!")
+        logger.info("Missing the boards file. A sample has been generated.")
+        logger.info("Please edit the template file in the jobj folder!")
         return example
 
 # Parsing
@@ -152,7 +151,7 @@ def getThreads(board):
             catalog.raise_for_status()
         catalog = catalog.json()
     except JSONDecodeError:
-        print(catalog)
+        logger.info(catalog)
         raise
     for page in catalog:
         for thread in page.get("threads"):
@@ -180,33 +179,38 @@ def saveThreads(board, queue):
     # for thread in progressbar.progressbar(queue, widgets=widgets, redirect_stdout=False):
     # for thread in progressbar.progressbar(queue, widgets=widgets, redirect_stdout=True):
     # for (enum, thread) in enumerate(queue):
-    #     print("{:5.5} {}/{}".format(board, enum, len(queue)))
-    for thread in tqdm.tqdm(queue, unit="thread"):
+    #     logger.info("{:5.5} {}/{}".format(board, enum, len(queue)))
+    progress = tqdm.tqdm(queue, unit="thread", desc=board)
+    for thread in progress:
 
         threadno = thread.get("no")
         threadurl = "https://a.4cdn.org/{}/thread/{}.json".format(board, threadno)
         try:
             # Get thread data
-            threadJson = requests.get(threadurl).json()
+            req = requests.get(threadurl)
+            req.raise_for_status()
+            threadJson = req.json()
             sem = threadJson.get("posts")[0].get("semantic_url")
 
             # Run thread operations
             saveMessageLog(threadno, sem, threadJson, board)
-            saveImageLog(threadJson, board, sem)
+            saveImageLog(threadno, sem, threadJson, board)
+
+        except requests.exceptions.HTTPError:
+            progress.write("Thread {} 404")
+            handleThread404(board, threadno)
+
+        except OSError:
+            logger.error("Error with thread [{}] {}".format(threadno, threadurl), exc_info=True)
 
         except JSONDecodeError:
-            print("Error with thread [{}] {}".format(threadno, threadurl))
-            print_exc(limit=1)
-            ju.json_save(thread, "error_thread_{}".format(threadno))
-            ju.json_save(format_exc(), "error_thread_{}f".format(threadno))
+            logger.error("Error with thread [{}] {}".format(threadno, threadurl), exc_info=True)
 
         except ConnectionError:
-            print("Error with thread [{}] {}".format(threadno, threadurl))
-            print_exc(limit=1)
-            ju.json_save(format_exc(), "error_thread_{}".format(threadno))
+            logger.error("Error with thread [{}] {}".format(threadno, threadurl), exc_info=True)
 
 
-def saveImageLog(threadJson, board, sem, verbose=False):
+def saveImageLog(threadno, sem, threadJson, board, verbose=False):
     """Saves all images in a thread, skipping up-to-date images.
     
     Args:
@@ -221,16 +225,61 @@ def saveImageLog(threadJson, board, sem, verbose=False):
     for post in threadPosts:
         if post.get("ext"):
 
-            (dstdir, dstfile, dstpath) = getDestImagePath(board, sem, post)
+            (dstdir, dstfile, dstpath) = getDestImagePath(board, sem, post, threadno)
+
+            # Begin legacy code block
+
+            (__, __, legacyDestPath) = getDestImagePathLegacy(board, sem, post)
+            if os.path.exists(legacyDestPath):
+                if not os.path.exists(dstpath):
+                    snip.filesystem.moveFileToFile(legacyDestPath, dstpath)
+                else:
+                    os.unlink(legacyDestPath)
+
+            (__, __, legacyDestPath) = getDestImagePathLegacy2(board, sem, post)
+            if os.path.exists(legacyDestPath):
+                if not os.path.exists(dstpath):
+                    snip.filesystem.moveFileToFile(legacyDestPath, dstpath)
+                else:
+                    os.unlink(legacyDestPath)
+
+            (__, __, legacyDestPath) = getDestImagePathLegacy3(board, sem, post, threadno)
+            if os.path.exists(legacyDestPath):
+                if not os.path.exists(dstpath):
+                    snip.filesystem.moveFileToFile(legacyDestPath, dstpath)
+                else:
+                    os.unlink(legacyDestPath)
+
+            # End legacy code block
 
             if (os.path.exists(dstpath)):
                 if post.get("fsize") == stat(dstpath).st_size:
                     skips += 1
                     continue
             realPosts.append(post)
-    downloadChanImages(board, sem, realPosts)
+
+    totalSize = sum([post.get("fsize") for post in realPosts if post.get("fsize")])
+    post_generator = tqdm.tqdm(realPosts, desc=sem, total=totalSize, unit='B', unit_scale=True)
+    for post in post_generator:
+        fsize = post.get("fsize")
+        (dstdir, dstfile, dstpath) = getDestImagePath(board, sem, post, threadno)
+
+        src = f"https://i.4cdn.org/{board}/{post.get('tim')}{post.get('ext')}"
+        
+        os.makedirs(dstdir, exist_ok=True)
+        try:
+            success = slowfunc(0.2, snip.net.saveStreamAs, (snip.net.getStream(src), dstpath,))
+            if not success:
+                post_generator.total -= fsize
+        except requests.exceptions.HTTPError:
+            logger.error("Error", exc_info=True)
+        except OSError:
+            logger.error("Error", exc_info=True)
+        finally:
+            post_generator.update(fsize)
+
     if (skips > 0) and verbose:
-        print("Skipped {:>3} existing images. ".format(skips))
+        logger.info("Skipped {:>3} existing images. ".format(skips))
 
 
 def saveMessageLog(threadno, sem, threadJson, board):
@@ -256,45 +305,59 @@ def saveMessageLog(threadno, sem, threadJson, board):
     except FileNotFoundError:
         pass
 
+    os.makedirs(msgBase, exist_ok=True)
     json.dump(threadJson, open(filePath + ".json", "w", encoding="utf-8"))
 
     os.makedirs(msgBase, exist_ok=True)
     with open(filePath + ".htm", "w", encoding="utf-8") as textfile:
         textfile.write('<link rel="stylesheet" type="text/css" href="4chan.css" />\n')
         textfile.write('<link rel="stylesheet" type="text/css" href="../4chan.css" />\n')
-        # print("------> {}".format(filePath))
+        # logger.info("------> {}".format(filePath))
         for post in threadJson.get("posts"):
             textfile.write(formatPost(post))
 
 
-def downloadChanImages(board, sem, posts):
-    """Downloads images.
-    
-    Args:
-        board (str): Board acronym
-        sem (str): Semmantic url (text id)
-        posts (list): List of json posts
-    
+def getDestImagePath(board, sem, post, threadno):
+    """Generates paths for saving images
+
     Returns:
-        Returns early if posts is empty.
+        Tuple (directory, file, path)
     """
-
-    totalSize = sum([post.get("fsize") for post in posts if post.get("fsize")])
-    post_generator = tqdm.tqdm(posts, desc=f"{board}/{sem}", total=totalSize, unit='B', unit_scale=True)
-    for post in post_generator:
-        fsize = post.get("fsize")
-        (dstdir, dstfile, dstpath) = getDestImagePath(board, sem, post)
-
-        src = f"https://i.4cdn.org/{board}/{post.get('tim')}{post.get('ext')}"
-        
-        if not os.path.isfile(dstfile):
-            slowfunc(1, snip.net.saveStreamAs, (snip.net.getStream(src), dstfile,))
-            post_generator.update(fsize)
-        else:
-            post_generator.total -= fsize
+    dstdir = "./saved/{}/{}/".format(board, sem)
+    dstfile = snip.filesystem.easySlug("{}-{}-{}{}".format(
+        threadno,
+        post.get("no"), 
+        post.get("filename"), 
+        post.get("ext")
+    ))
+    dstpath = os.path.join(dstdir, dstfile)
+    return (dstdir, dstfile, dstpath)
 
 
-def getDestImagePath(board, sem, post):
+def getDestImagePathLegacy3(board, sem, post, threadno):
+    """Generates paths for saving images
+
+    Returns:
+        Tuple (directory, file, path)
+    """
+    dstdir = "./saved/{}/{}/".format(board, sem)
+    if post.get("tim") != post.get("filename"):
+        dstfile = snip.filesystem.easySlug("{}-{}-{}{}".format(
+            threadno,
+            post.get("tim"), 
+            post.get("filename"), 
+            post.get("ext")
+        ))
+    else:
+        dstfile = snip.filesystem.easySlug("{}{}".format(
+            post.get("tim"), 
+            post.get("ext")
+        ))
+    dstpath = os.path.join(dstdir, dstfile)
+    return (dstdir, dstfile, dstpath)
+
+
+def getDestImagePathLegacy(board, sem, post):
     """Generates paths for saving images
 
     Returns:
@@ -303,44 +366,30 @@ def getDestImagePath(board, sem, post):
     dstdir = "./saved/{}/{}/".format(board, sem)
     dstfile = "{}{}".format(post.get("tim"), post.get("ext"))
     dstpath = os.path.join(dstdir, dstfile)
+    # logger.info(dstdir, dstfile, dstpath)
     return (dstdir, dstfile, dstpath)
 
 
-def downloadFile(src, dstdir, dstfile, debug=None, max_retries=5, verbose=False):
-    """Download a file from a URL to a destination, with a filename.
-    
-    Args:
-        src (str): URL of source
-        dstdir (str): Directory of desination, i.e. C:/Users/Guest/
-        dstfile (str): Name of file, i.e. image.jpg
-        max_retries (int, optional): Maximum number of times to retry
-        verbose (bool, optional): Print additional output
-    
+def getDestImagePathLegacy2(board, sem, post):
+    """Generates paths for saving images
+
     Returns:
-        TYPE: Description
+        Tuple (directory, file, path)
     """
-    dstpath = "{}{}".format(dstdir, dstfile)
-    os.makedirs(dstdir, exist_ok=True)
-    retries = 0
-
-    while (retries < max_retries):
-        try:
-            exec_with_timeout((5 + 3 * retries), urlretrieve, src, dstpath)
-            if verbose:
-                print("{} --> {}".format(src, dstpath))
-            return dstpath
-        except (HTTPError, URLError, ConnectionResetError):
-            print("{} -x> {}".format(src, dstpath))
-            if verbose:
-                print_exc(limit=5)
-            else:
-                print_exc(limit=2)
-        except timeout_decorator.TimeoutError:
-            if verbose:
-                print("{} -x> {} [Timeout]".format(src, dstpath))
-        retries += 1
-        # print("Retrying [{}/{}]".format(retries, max_retries))
-
+    dstdir = "./saved/{}/{}/".format(board, sem)
+    if post.get("tim") != post.get("filename"):
+        dstfile = snip.filesystem.easySlug("{}-{}{}".format(
+            post.get("tim"), 
+            post.get("filename"), 
+            post.get("ext")
+        ))
+    else:
+        dstfile = snip.filesystem.easySlug("{}{}".format(
+            post.get("tim"), 
+            post.get("ext")
+        ))
+    dstpath = os.path.join(dstdir, dstfile)
+    return (dstdir, dstfile, dstpath)
 
 # Main logic
 
@@ -363,7 +412,8 @@ def selectImages(board, preSelectedThreads, saveCallback):
     liveThreadNos = set([thread.get("no") for thread in threads])
     for thread in preSelectedThreads:
         if thread.get("no") not in liveThreadNos:
-            print("404: {}".format(thread.get("semantic_url")))
+            logger.info("404: {}".format(thread.get("semantic_url")))
+            handleThread404(board, thread.get("no"))
 
     # Window
     headers = [
@@ -418,14 +468,18 @@ def selectImages(board, preSelectedThreads, saveCallback):
     return
 
 
+def handleThread404(board, threadno):
+    downloadQueue = ju.json_load("downloadQueue", default={})
+    for thread in (t for t in downloadQueue[board] if t["no"] == threadno):
+        downloadQueue[board].remove(thread)
+    ju.json_save(downloadQueue, "downloadQueue")
+
+
 def main():
 
     # Load
     boards = loadBoards().get("4chan")
-    try:
-        downloadQueue = ju.json_load("downloadQueue")
-    except FileNotFoundError:
-        downloadQueue = {}
+    downloadQueue = ju.json_load("downloadQueue", default={})
 
     # Get selections
     try:
@@ -441,14 +495,14 @@ def main():
                 """
                 downloadQueue[board] = selection
                 ju.json_save(downloadQueue, "downloadQueue")
-                print("Saved to file")
+                logger.info("Saved to file")
 
             selectImages(board, oldSelection, saveCallback)
 
     except KeyboardInterrupt:
-        print("Selections canceled, jumping straight to downloading threads. ")
+        logger.info("Selections canceled, jumping straight to downloading threads. ")
         ju.json_save(downloadQueue, "downloadQueue")
-        print("Saved to file")
+        logger.info("Saved to file")
 
     # Run downloads
     for board in list(downloadQueue.keys()):
