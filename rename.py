@@ -1,12 +1,15 @@
 #!/bin/python3
 from distutils.dir_util import copy_tree
 from glob import glob
-from os.path import abspath, relpath, dirname, split, join, getmtime
+from os.path import abspath, normpath, dirname, split, join, getmtime
 from send2trash import send2trash
 # from time import sleep
+import os
 # from traceback import print_exc
 import datetime
 from snip import loom
+
+import prompt_toolkit as ptk
 
 
 def renameDir(src, dst):
@@ -32,7 +35,7 @@ sortmethods = {
 }
 
 
-def main():
+def getArgs():
     import argparse
     ap = argparse.ArgumentParser()
     defsrcglob = join("saved", "*", "*", "")
@@ -46,7 +49,26 @@ def main():
                     help="Don't actually perform disk operations")
     ap.add_argument("-r", "--reverse", action="store_true",
                     help="Reverse sort")
-    args = ap.parse_args()
+    ap.add_argument("--use-completer", action="store_true",
+                    help="Use path completer")
+    return ap.parse_args()
+
+
+def PathCompleter(destfldr):
+    globstr = join(destfldr, "**", "")
+    print("Scanning paths in", globstr)
+    paths = [
+        root.replace(destfldr, "").replace("\\", "/") + "/"
+        for root, dirs, files in os.walk(destfldr)
+    ]
+    paths = [p[1:] if p.startswith("/") else p for p in paths]
+
+    # print(paths)
+    return ptk.completion.WordCompleter(paths, ignore_case=True, match_middle=False, sentence=r"[. ]+")
+
+
+def main():
+    args = getArgs()
 
     srcdir = args.srcglob  # abspath(args.srcglob)  # .replace("/", sep)
 
@@ -62,6 +84,9 @@ def main():
 
     print("Source:", srcdir)
     print("Dest:", getdestfldr("$src/"))
+
+    path_completer = PathCompleter(getdestfldr("$src/")) if args.use_completer else None
+
     globbed = glob(srcdir)
     try:
         globbed = sortmethods[args.sort](globbed, args.reverse)
@@ -71,10 +96,14 @@ def main():
         print("Valid methods include", sortmethods.keys())
     with loom.Spool(6) as spool:
         for path in globbed:
-            print(datetime.datetime.fromtimestamp(getmtime(path)).strftime("%Y-%m-%d"), relpath(path))
+
+            print(datetime.datetime.fromtimestamp(getmtime(path)).strftime("%Y-%m-%d"), normpath(path))
             try:
-                ans = input("New name? > ")
-            except EOFError as e:
+                ans = ptk.prompt(
+                    "New path? > ", 
+                    bottom_toolbar=lambda: str(spool), reserve_space_for_menu=20,
+                    completer=path_completer, complete_in_thread=True)
+            except EOFError:
                 ans = '\x04'
             except KeyboardInterrupt:
                 print("Interrupt.")
@@ -84,21 +113,20 @@ def main():
             try:
                 if ans == "":
                     continue
-                if ans == '\x18':
-                    spool.finish(verbose=True, use_pbar=True)
-                    return 0
-                # ans = abspath(ans)
-                ans = split(relpath(path))[1] if ans == '\x04' else ans  # ^D
+
+                ans = split(normpath(path))[1] if ans == '\x04' else ans  # ^D
                 newDir = join(getdestfldr(path), ans)
                 print("{} -> {}".format(path, newDir))
                 if not args.mock:
                     spool.enqueue(name=ans, target=renameDir, args=(path, newDir,))
             except ValueError:
                 print("Invalid input. ")
+
         print("Finishing")
-        spool.finish(verbose=True, use_pbar=True)
+        spool.finish()
         assert len(spool.queue) == 0, "spool did not finish"
         return 0
+
 
 if __name__ == "__main__":
     main()
